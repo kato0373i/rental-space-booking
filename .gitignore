@@ -19,6 +19,9 @@ npm-debug.log*
 .vscode/*
 !.vscode/extensions.json
 
+# Claude Code（ローカル設定・worktree・launch.json 等）
+.claude/
+
 # test / coverage
 coverage/
 
