@@ -8,6 +8,7 @@ export const ADMIN: Actor = { role: "Admin" };
 
 export type SeedResult = {
   readonly spaceId: SpaceId;
+  readonly studioId: SpaceId;
   readonly memberId: CustomerId;
 };
 
@@ -35,6 +36,30 @@ const MEETING_ROOM_A: SpaceInput = {
   ],
 };
 
+/** スタジオB のシード設定。営業 10:00–22:00 / 60分スロット / 平日1500・土日2500円。 */
+const STUDIO_B: SpaceInput = {
+  name: "スタジオB",
+  capacity: 12,
+  openHour: 10,
+  openMinute: 0,
+  closeHour: 22,
+  closeMinute: 0,
+  slotMinutes: 60,
+  minSlots: 1,
+  maxSlots: 6,
+  bookableHorizonDays: 30,
+  rateRules: [
+    { dayKind: "Weekday", fromHour: 10, fromMinute: 0, toHour: 22, toMinute: 0, unitPriceJpy: 1500 },
+    { dayKind: "Saturday", fromHour: 10, fromMinute: 0, toHour: 22, toMinute: 0, unitPriceJpy: 2500 },
+    { dayKind: "Sunday", fromHour: 10, fromMinute: 0, toHour: 22, toMinute: 0, unitPriceJpy: 2500 },
+  ],
+  // 24時間前まで無料、以降50%。
+  cancellationTiers: [
+    { hoursBefore: 0, feeRatePct: 50 },
+    { hoursBefore: 24, feeRatePct: 0 },
+  ],
+};
+
 /**
  * 起動時シード（NFR-003）。プロセス再起動でデータが揮発するため、起動ごとに初期化する。
  * 管理者として 1 スペースを登録し、デモ用の会員を 1 名作成する。
@@ -43,6 +68,11 @@ export function seed(container: Container): SeedResult {
   const registered = container.registerSpace.execute(ADMIN, MEETING_ROOM_A);
   if (!registered.ok) {
     throw new Error(`シードのスペース登録に失敗しました: ${JSON.stringify(registered.error)}`);
+  }
+
+  const studio = container.registerSpace.execute(ADMIN, STUDIO_B);
+  if (!studio.ok) {
+    throw new Error(`シードのスペース登録に失敗しました: ${JSON.stringify(studio.error)}`);
   }
 
   const member = container.registerMember.execute({
@@ -58,6 +88,7 @@ export function seed(container: Container): SeedResult {
 
   return {
     spaceId: SpaceId.of(registered.value.spaceId),
+    studioId: SpaceId.of(studio.value.spaceId),
     memberId: CustomerId.of(member.value.customerId),
   };
 }

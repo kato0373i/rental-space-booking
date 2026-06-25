@@ -1,6 +1,6 @@
 import type { Clock } from "../../../shared/domain/Clock.js";
 import type { EventBus } from "../../../shared/domain/EventBus.js";
-import type { SpaceId } from "../../../shared/domain/Id.js";
+import type { CustomerId, SpaceId } from "../../../shared/domain/Id.js";
 import type { JstDateTime } from "../../../shared/domain/JstDateTime.js";
 import type { Result } from "../../../shared/domain/Result.js";
 import { err, ok } from "../../../shared/domain/Result.js";
@@ -23,7 +23,10 @@ import type { SpaceCatalogPort } from "./ports/SpaceCatalogPort.js";
 export type PlaceReservationInput = {
   readonly spaceId: SpaceId;
   readonly slotStarts: readonly JstDateTime[];
-  readonly contact: GuestContactInput;
+  /** ゲスト経路で必須。会員経路（customerId 指定時）では不要。 */
+  readonly contact?: GuestContactInput;
+  /** 会員経路。指定時は contact を使わず customerId で直接紐づける（FR-F07/F08, ADR-F02）。 */
+  readonly customerId?: CustomerId;
   /** モック決済の入力。NFR-002 によりドメイン/ログには一切保存しない。 */
   readonly paymentToken?: string;
 };
@@ -83,8 +86,8 @@ export class PlaceReservation {
     const policy = CancellationPolicy.fromSnapshot(catalog.value.cancellationTiers);
     if (!policy.ok) return err(validationError(policy.error));
 
-    // ゲスト顧客を発行/解決（ADR-008）。
-    const customerId = this.customers.resolveOrIssueGuest(input.contact);
+    // 顧客を解決: 会員経路は customerId で直接紐づけ、ゲスト経路は連絡先から発行（ADR-F02 / ADR-008）。
+    const customerId = this.resolveCustomer(input);
     if (!customerId.ok) return customerId;
 
     // Pending 作成。
@@ -140,5 +143,22 @@ export class PlaceReservation {
         ? "決済がタイムアウトしました。スロットは解放されました"
         : "決済に失敗しました。スロットは解放されました";
     return err(paymentFailed(reason, message));
+  }
+
+  /**
+   * 予約者の CustomerId を解決する。
+   * 会員経路（customerId 指定）は存在検証のうえ直接紐づけ、ゲスト経路は連絡先からゲスト顧客を発行する。
+   */
+  private resolveCustomer(input: PlaceReservationInput): Result<CustomerId, ValidationError> {
+    if (input.customerId !== undefined) {
+      if (!this.customers.contactOf(input.customerId)) {
+        return err(validationError("指定された会員が見つかりません"));
+      }
+      return ok(input.customerId);
+    }
+    if (input.contact !== undefined) {
+      return this.customers.resolveOrIssueGuest(input.contact);
+    }
+    return err(validationError("予約者情報がありません", ["連絡先または会員IDが必要です"]));
   }
 }
