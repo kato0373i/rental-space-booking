@@ -20,6 +20,7 @@ import { InMemoryReservationRepository } from "../contexts/booking/infrastructur
 
 // Space
 import { EditSpace } from "../contexts/space/application/EditSpace.js";
+import { ListSpaces } from "../contexts/space/application/ListSpaces.js";
 import { RegisterSpace } from "../contexts/space/application/RegisterSpace.js";
 import { ResumeSpace } from "../contexts/space/application/ResumeSpace.js";
 import { SpaceCatalogQueryService } from "../contexts/space/application/SpaceCatalogQueryService.js";
@@ -62,6 +63,7 @@ export type Container = {
   readonly editSpace: EditSpace;
   readonly suspendSpace: SuspendSpace;
   readonly resumeSpace: ResumeSpace;
+  readonly listSpaces: ListSpaces;
   // Customer ユースケース
   readonly registerMember: RegisterMember;
   readonly loginMock: LoginMock;
@@ -121,6 +123,7 @@ export function createContainer(options: ContainerOptions = {}): Container {
     editSpace: new EditSpace(spaces),
     suspendSpace: new SuspendSpace(spaces),
     resumeSpace: new ResumeSpace(spaces),
+    listSpaces: new ListSpaces(spaces),
     registerMember: new RegisterMember(customers),
     loginMock: new LoginMock(customers),
   };

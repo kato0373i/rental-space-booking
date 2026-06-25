@@ -50,15 +50,25 @@ npm install
 ## よく使うコマンド
 
 ```bash
-npm run typecheck   # 型チェック（tsc --noEmit）
+npm run typecheck   # 型チェック（backend / ui の2パス, ADR-F05）
 npm test            # テスト実行（Vitest）
 npm run test:watch  # テスト watch
 npm run demo        # 主要フローのコンソールデモ（tsx src/main.ts）
+npm run dev         # フロント（Vite + React SPA）を起動
+npm run build:web   # フロントの本番ビルド（vite build）
 ```
+
+## フロントエンド
+
+ゲスト予約フロー中心の React SPA（`src/ui/`）。ブラウザ内から既存のアプリケーション
+サービス（`composition/createWebApp`）を直接呼ぶ（HTTPサーバなし）。要件は
+`docs/requirements/rental-space-booking-frontend.md`、設計は
+`docs/design/rental-space-booking-frontend.md` を参照。`npm run dev` で起動。
 
 ## 技術スタック
 
 - TypeScript 5.x（strict + 追加の厳格フラグ）
+- React 19 + Vite（フロントエンド SPA）
 - Vitest（テスト）
 - tsx（TS 直接実行）
 - Node.js 20+

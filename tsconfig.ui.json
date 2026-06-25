@@ -1,0 +1,13 @@
+{
+  // フロント（src/ui）専用の型チェック設定。
+  // backend 用 tsconfig.json を継承し、DOM/JSX を追加する（ADR-F05）。
+  // ドメイン/バックエンドへの DOM・React 混入は backend パス（tsconfig.json, DOM 無し）が弾く。
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "types": ["node", "vite/client"]
+  },
+  "include": ["src/ui"],
+  "exclude": ["node_modules", "dist"]
+}
