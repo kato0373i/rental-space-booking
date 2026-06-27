@@ -27,3 +27,7 @@ coverage/
 
 # TypeScript incremental
 *.tsbuildinfo
+
+# AWS Blocks ローカルデータ（PGlite 等のモック永続化）/ 生成物
+.bb-data/
+.aws-blocks/
