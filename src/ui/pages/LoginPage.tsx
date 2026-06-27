@@ -24,7 +24,7 @@ export function LoginPage() {
     const r = services.login(loginId.trim(), secret);
     if (r.ok) {
       setSession(r.value);
-      navigate("/my");
+      navigate(r.value.role === "Admin" ? "/admin" : "/my");
     } else {
       setLoginError(errorMessage(r.error));
     }
@@ -57,7 +57,7 @@ export function LoginPage() {
     <section>
       <h1>ログイン</h1>
       <div className="card">
-        <p className="muted">デモ用アカウント: taro / password</p>
+        <p className="muted">デモ用: 会員 taro / password ・ 管理者 admin / admin123</p>
         <label>ログインID</label>
         <input value={loginId} onChange={(e) => setLoginId(e.target.value)} />
         <label>パスワード</label>

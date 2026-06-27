@@ -10,6 +10,7 @@ export type SeedResult = {
   readonly spaceId: SpaceId;
   readonly studioId: SpaceId;
   readonly memberId: CustomerId;
+  readonly adminId: CustomerId;
 };
 
 /** 会議室A のシード設定。営業 09:00–18:00 / 60分スロット / 平日1000・土日2000円。 */
@@ -86,9 +87,23 @@ export function seed(container: Container): SeedResult {
     throw new Error(`シードの会員登録に失敗しました: ${JSON.stringify(member.error)}`);
   }
 
+  // 管理者アカウント（FR-042, B-1）。Customer として登録し、loginId を管理者集合に追加する。
+  const admin = container.registerMember.execute({
+    name: "運営管理者",
+    email: "admin@example.com",
+    phone: "090-9999-9999",
+    loginId: "admin",
+    secret: "admin123",
+  });
+  if (!admin.ok) {
+    throw new Error(`シードの管理者登録に失敗しました: ${JSON.stringify(admin.error)}`);
+  }
+  container.adminLoginIds.add("admin");
+
   return {
     spaceId: SpaceId.of(registered.value.spaceId),
     studioId: SpaceId.of(studio.value.spaceId),
     memberId: CustomerId.of(member.value.customerId),
+    adminId: CustomerId.of(admin.value.customerId),
   };
 }

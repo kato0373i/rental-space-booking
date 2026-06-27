@@ -7,11 +7,17 @@ import type { PlaceReservationInput } from "../contexts/booking/application/Plac
 import type { ReservationView } from "../contexts/booking/application/ReservationView.js";
 import type { NotificationMessage } from "../contexts/booking/application/ports/NotificationPort.js";
 import type { SpaceSummary } from "../contexts/space/application/ListSpaces.js";
+import type { SpaceDetail } from "../contexts/space/application/GetSpaceDetail.js";
+import type { SpaceInput } from "../contexts/space/application/spaceFactory.js";
+import type { ReservationStatus } from "../contexts/booking/domain/ReservationStatus.js";
 import { createContainer } from "./container.js";
 import { seed } from "./seed.js";
 
 // UI が触れる型はここに集約・再エクスポートする（UI→composition の単一依存, NFR-F04）。
-export type { AppError, ReservationView, NotificationMessage, SpaceSummary, CancellationResult };
+export type { AppError, ReservationView, NotificationMessage, SpaceSummary, CancellationResult, SpaceDetail };
+
+/** スペース登録/編集フォーム入力（backend の SpaceInput に対応, B-3）。 */
+export type AdminSpaceFormInput = SpaceInput;
 
 /** UI 向けの Result（backend の Result と構造同一。ドメイン型を UI に漏らさないための別名）。 */
 export type UiResult<T> =
@@ -40,7 +46,7 @@ export type ContactInput = {
 
 export type SessionUser = {
   readonly customerId: string;
-  readonly role: "Member";
+  readonly role: "Member" | "Admin";
 };
 
 export type PlaceResultDto = {
@@ -58,6 +64,37 @@ export type PlaceArgs = {
   readonly customerId?: string;
 };
 
+export type ReservationRow = ReservationView & { readonly maskedRecipient: string };
+
+export type PageDto<T> = {
+  readonly items: readonly T[];
+  readonly total: number;
+  readonly page: number;
+  readonly size: number;
+};
+
+export type AdminReservationFilter = {
+  readonly status?: string;
+  readonly spaceId?: string;
+  readonly fromDayIso?: string;
+  readonly toDayIso?: string;
+  readonly page?: number;
+  readonly size?: number;
+};
+
+/** 管理者向け facade（認可は session のロールから Actor を構築し requireAdmin で強制, ADR-AD01）。 */
+export type AdminApi = {
+  listSpaces(session: SessionUser): SpaceSummary[];
+  getSpaceDetail(session: SessionUser, spaceId: string): UiResult<SpaceDetail>;
+  registerSpace(session: SessionUser, form: AdminSpaceFormInput): UiResult<{ readonly spaceId: string }>;
+  editSpace(session: SessionUser, spaceId: string, form: AdminSpaceFormInput): UiResult<void>;
+  suspendSpace(session: SessionUser, spaceId: string): UiResult<void>;
+  resumeSpace(session: SessionUser, spaceId: string): UiResult<void>;
+  listReservations(session: SessionUser, filter: AdminReservationFilter): UiResult<PageDto<ReservationRow>>;
+  forceCancel(session: SessionUser, reservationId: string, overrideZeroRate: boolean): Promise<UiResult<CancellationResult>>;
+  markNoShow(session: SessionUser, reservationId: string): UiResult<void>;
+};
+
 /** UI が呼ぶアプリケーションサービスの facade（プリミティブ／DTO のみを授受）。 */
 export type AppServices = {
   listSpaces(): SpaceSummary[];
@@ -73,6 +110,8 @@ export type AppServices = {
   notifications(): NotificationMessage[];
   setPaymentBehavior(behavior: PaymentBehavior): void;
   triggerReminders(): number;
+  // 管理者（FR-AD01〜09）
+  admin: AdminApi;
 };
 
 const WEEKDAY_JA = ["日", "月", "火", "水", "木", "金", "土"] as const;
@@ -94,6 +133,12 @@ const parseIsoJst = (iso: string): JstDateTime => {
     Number(m[5]),
   );
 };
+
+/** UI セッションから認可用 Actor を構築する（ADR-AD01）。requireAdmin が最終強制。 */
+const toActor = (session: SessionUser): Actor => ({
+  role: session.role,
+  ...(session.customerId ? { customerId: CustomerId.of(session.customerId) } : {}),
+});
 
 /**
  * ブラウザ内アプリの起動（ADR-F01）。コンテナ生成＋シードを行い、UI 向け facade を返す。
@@ -162,7 +207,8 @@ export function createWebApp(): AppServices {
       const result = c.loginMock.execute({ loginId, secret });
       if (!result.ok) return result;
       const actor: Actor = result.value;
-      return { ok: true, value: { customerId: actor.customerId ?? "", role: "Member" } };
+      const role = actor.role === "Admin" ? "Admin" : "Member";
+      return { ok: true, value: { customerId: actor.customerId ?? "", role } };
     },
 
     notifications: () => [...c.notifier.sent()],
@@ -170,5 +216,51 @@ export function createWebApp(): AppServices {
     setPaymentBehavior: (behavior) => c.payment.setBehavior(behavior),
 
     triggerReminders: () => c.triggerReminders.execute({ referenceTime: c.clock.now() }).sent,
+
+    admin: {
+      listSpaces: () => c.listSpaces.execute(true),
+
+      getSpaceDetail: (_session, spaceId) => c.getSpaceDetail.execute(SpaceId.of(spaceId)),
+
+      registerSpace: (session, form) => c.registerSpace.execute(toActor(session), form),
+
+      editSpace: (session, spaceId, form) =>
+        c.editSpace.execute(toActor(session), { ...form, spaceId: SpaceId.of(spaceId) }),
+
+      suspendSpace: (session, spaceId) =>
+        c.suspendSpace.execute(toActor(session), { spaceId: SpaceId.of(spaceId) }),
+
+      resumeSpace: (session, spaceId) =>
+        c.resumeSpace.execute(toActor(session), { spaceId: SpaceId.of(spaceId) }),
+
+      listReservations: (session, filter) => {
+        const r = c.listAllReservations.execute(toActor(session), {
+          ...(filter.status ? { status: filter.status as ReservationStatus } : {}),
+          ...(filter.spaceId ? { spaceId: SpaceId.of(filter.spaceId) } : {}),
+          ...(filter.fromDayIso ? { fromInclusive: parseDay(filter.fromDayIso) } : {}),
+          ...(filter.toDayIso ? { toExclusive: parseDay(filter.toDayIso) } : {}),
+          ...(filter.page ? { page: filter.page } : {}),
+          ...(filter.size ? { size: filter.size } : {}),
+        });
+        if (!r.ok) return r;
+        const items: ReservationRow[] = r.value.items.map((v) => {
+          const contact = c.directory.contactOf(CustomerId.of(v.customerId));
+          return {
+            ...v,
+            maskedRecipient: contact ? `${contact.maskedName} / ${contact.maskedEmail}` : "(不明)",
+          };
+        });
+        return { ok: true, value: { items, total: r.value.total, page: r.value.page, size: r.value.size } };
+      },
+
+      forceCancel: (session, reservationId, overrideZeroRate) =>
+        c.forceCancelReservation.execute(toActor(session), {
+          reservationId: ReservationId.of(reservationId),
+          overrideZeroRate,
+        }),
+
+      markNoShow: (session, reservationId) =>
+        c.markNoShow.execute(toActor(session), { reservationId: ReservationId.of(reservationId) }),
+    },
   };
 }

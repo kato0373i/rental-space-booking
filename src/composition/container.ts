@@ -20,6 +20,7 @@ import { InMemoryReservationRepository } from "../contexts/booking/infrastructur
 
 // Space
 import { EditSpace } from "../contexts/space/application/EditSpace.js";
+import { GetSpaceDetail } from "../contexts/space/application/GetSpaceDetail.js";
 import { ListSpaces } from "../contexts/space/application/ListSpaces.js";
 import { RegisterSpace } from "../contexts/space/application/RegisterSpace.js";
 import { ResumeSpace } from "../contexts/space/application/ResumeSpace.js";
@@ -64,9 +65,12 @@ export type Container = {
   readonly suspendSpace: SuspendSpace;
   readonly resumeSpace: ResumeSpace;
   readonly listSpaces: ListSpaces;
+  readonly getSpaceDetail: GetSpaceDetail;
   // Customer ユースケース
   readonly registerMember: RegisterMember;
   readonly loginMock: LoginMock;
+  /** 管理者として扱う loginId 集合（シードが登録, FR-042）。LoginMock と共有。 */
+  readonly adminLoginIds: Set<string>;
 };
 
 export type ContainerOptions = {
@@ -99,6 +103,9 @@ export function createContainer(options: ContainerOptions = {}): Container {
   // 通知購読（Booking → Notification, 結果整合）
   new NotificationHandlers(notifier, directory).register(bus);
 
+  // 管理者 loginId 集合（シードが登録）。LoginMock と共有して Admin ロールを判定（B-1）。
+  const adminLoginIds = new Set<string>();
+
   return {
     clock,
     bus,
@@ -124,7 +131,9 @@ export function createContainer(options: ContainerOptions = {}): Container {
     suspendSpace: new SuspendSpace(spaces),
     resumeSpace: new ResumeSpace(spaces),
     listSpaces: new ListSpaces(spaces),
+    getSpaceDetail: new GetSpaceDetail(spaces),
     registerMember: new RegisterMember(customers),
-    loginMock: new LoginMock(customers),
+    loginMock: new LoginMock(customers, adminLoginIds),
+    adminLoginIds,
   };
 }
