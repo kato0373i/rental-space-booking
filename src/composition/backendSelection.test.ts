@@ -1,21 +1,25 @@
 import { describe, expect, it } from "vitest";
+import { InMemoryReservationRepository } from "../contexts/booking/infrastructure/InMemoryReservationRepository.js";
+import { BlocksReservationRepository } from "../contexts/booking/infrastructure/BlocksReservationRepository.js";
 import { createContainer } from "./container.js";
 
-// #7 基盤: backend 切替シームの契約を固定する。
-// "memory"（既定）は従来どおりコンテナを構築でき、"blocks" は未実装として
-// 明示的に失敗する（“動くように見えて中身が無い”状態を防ぐ）。
+// backend 切替シームの契約を固定する（#7 基盤 → #8 で blocks の予約実装を活性化）。
 describe("createContainer backend 選択", () => {
-  it("既定（未指定）は memory として構築できる", () => {
+  it("既定（未指定）は memory（インメモリ予約実装）で構築される", () => {
     const c = createContainer({ silentNotifications: true });
-    expect(c.reservations).toBeDefined();
+    expect(c.reservations).toBeInstanceOf(InMemoryReservationRepository);
   });
 
-  it('backend "memory" を明示しても構築できる', () => {
+  it('backend "memory" を明示しても同じくインメモリ実装', () => {
     const c = createContainer({ backend: "memory", silentNotifications: true });
-    expect(c.spaces).toBeDefined();
+    expect(c.reservations).toBeInstanceOf(InMemoryReservationRepository);
   });
 
-  it('backend "blocks" は未実装として throw する（#8 以降で実装）', () => {
-    expect(() => createContainer({ backend: "blocks" })).toThrowError(/未実装/);
+  it('backend "blocks" は予約を AWS Blocks Database 実装に切り替える（#8）', () => {
+    const c = createContainer({ backend: "blocks", silentNotifications: true });
+    expect(c.reservations).toBeInstanceOf(BlocksReservationRepository);
+    // スペース/顧客は移行途中のためインメモリのまま（ADR-AB05）。
+    expect(c.spaces).toBeDefined();
+    expect(c.customers).toBeDefined();
   });
 });

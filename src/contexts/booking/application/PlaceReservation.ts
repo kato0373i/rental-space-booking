@@ -101,7 +101,7 @@ export class PlaceReservation {
     });
 
     // 占有をアトミック確保（一段階）。競合は後勝ち拒否（FR-013）。
-    const reserved = this.reservations.save(reservation);
+    const reserved = await this.reservations.save(reservation);
     if (!reserved.ok) {
       if (reserved.error.kind === "ConflictError") return err(reserved.error);
       return err(conflictError("予約の確保に失敗しました"));
@@ -115,10 +115,10 @@ export class PlaceReservation {
       if (!confirmed.ok) {
         // 想定外の状態。占有解放のため abort して終える。
         reservation.abort("Failed", now);
-        this.reservations.save(reservation);
+        await this.reservations.save(reservation);
         return err(conflictError("予約確定に失敗しました"));
       }
-      const persisted = this.reservations.save(reservation);
+      const persisted = await this.reservations.save(reservation);
       if (!persisted.ok) {
         // 確定保存に失敗（稀な状態遷移競合）→ 返金で補償し破棄（設計 §6-1 巻き戻し方針）。
         await this.payment.refund(reservation.id, quote.value);
@@ -135,7 +135,7 @@ export class PlaceReservation {
     // 決済失敗/タイムアウト → 破棄・占有解放（FR-012 シナリオ2/3）。
     const reason = outcome.kind === "TimedOut" ? "TimedOut" : "Failed";
     const aborted = reservation.abort(reason, now);
-    this.reservations.save(reservation);
+    await this.reservations.save(reservation);
     if (aborted.ok) this.bus.publish(aborted.value);
 
     const message =

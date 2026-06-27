@@ -13,8 +13,8 @@ export function DemoControlPanel() {
     services.setPaymentBehavior(value);
   };
 
-  const onReminders = () => {
-    setSent(services.triggerReminders());
+  const onReminders = async () => {
+    setSent(await services.triggerReminders());
     refresh();
   };
 

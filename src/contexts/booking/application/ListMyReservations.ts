@@ -10,10 +10,10 @@ export class ListMyReservations {
     private readonly clock: Clock,
   ) {}
 
-  execute(memberId: CustomerId): ReservationView[] {
+  async execute(memberId: CustomerId): Promise<ReservationView[]> {
     const now = this.clock.now();
-    return this.reservations
-      .byCustomer(memberId)
+    const mine = await this.reservations.byCustomer(memberId);
+    return mine
       .sort((a, b) => b.createdAt.epochMillis - a.createdAt.epochMillis)
       .map((r) => toReservationView(r, now));
   }

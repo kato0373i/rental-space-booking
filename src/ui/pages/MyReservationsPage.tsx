@@ -1,6 +1,7 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { CancelControl } from "../components/CancelControl.js";
+import type { ReservationView } from "../../composition/webFacade.js";
 import { useApp } from "../app/AppContext.js";
 import { fmtDateTime, statusLabel, yen } from "../app/format.js";
 
@@ -8,10 +9,21 @@ import { fmtDateTime, statusLabel, yen } from "../app/format.js";
 export function MyReservationsPage() {
   const { services, session, tick } = useApp();
 
-  const reservations = useMemo(
-    () => (session ? services.listMyReservations(session.customerId) : []),
-    [services, session, tick],
-  );
+  // listMyReservations は非同期（DBバックエンド対応, ADR-AB01）。state + effect で取得する。
+  const [reservations, setReservations] = useState<ReservationView[]>([]);
+  useEffect(() => {
+    if (!session) {
+      setReservations([]);
+      return;
+    }
+    let alive = true;
+    void services.listMyReservations(session.customerId).then((rs) => {
+      if (alive) setReservations(rs);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [services, session, tick]);
 
   const spaceName = useMemo(() => {
     const map = new Map(services.listSpaces().map((s) => [s.spaceId, s.name]));

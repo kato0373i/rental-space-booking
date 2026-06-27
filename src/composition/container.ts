@@ -1,3 +1,6 @@
+import { fileURLToPath } from "node:url";
+import { Scope } from "@aws-blocks/core";
+import { Database } from "@aws-blocks/blocks";
 import type { Clock } from "../shared/domain/Clock.js";
 import { SystemClock } from "../shared/domain/Clock.js";
 import { InMemoryEventBus, type EventBus } from "../shared/domain/EventBus.js";
@@ -17,6 +20,11 @@ import { TriggerReminders } from "../contexts/booking/application/TriggerReminde
 import type { CustomerDirectoryPort } from "../contexts/booking/application/ports/CustomerDirectoryPort.js";
 import type { SpaceCatalogPort } from "../contexts/booking/application/ports/SpaceCatalogPort.js";
 import { InMemoryReservationRepository } from "../contexts/booking/infrastructure/InMemoryReservationRepository.js";
+import {
+  BlocksReservationRepository,
+  type SqlDatabase,
+} from "../contexts/booking/infrastructure/BlocksReservationRepository.js";
+import type { ReservationRepository } from "../contexts/booking/domain/ports/ReservationRepository.js";
 
 // Space
 import { EditSpace } from "../contexts/space/application/EditSpace.js";
@@ -47,7 +55,8 @@ export type Container = {
   readonly directory: CustomerDirectoryPort;
   readonly spaces: InMemorySpaceRepository;
   readonly customers: InMemoryCustomerRepository;
-  readonly reservations: InMemoryReservationRepository;
+  /** 予約リポジトリ（backend に応じてインメモリ or AWS Blocks 実装。ADR-AB03）。 */
+  readonly reservations: ReservationRepository;
   // Booking ユースケース
   readonly searchAvailability: SearchAvailability;
   readonly quoteReservation: QuoteReservation;
@@ -92,26 +101,20 @@ export type ContainerOptions = {
  * 合成ルート（DI）。ポート↔実装の束ね（インメモリ/RDS・Blocks 切替点, NFR-006）。
  * 別のリポジトリ実装（AWS Blocks 等）へ差し替える場合、ここの new を差し替えるだけでよい。
  *
- * `backend: "blocks"` は #7（基盤）でシームのみ用意済み。実アダプタは #8 以降で
- * コンテキスト単位に追加するため、現時点では明示的に未実装として失敗させる
- * （“動くように見えて中身が無い”状態を避ける）。
+ * `backend: "blocks"` は予約コンテキスト（#8）を AWS Blocks Database 実装に切り替える。
+ * スペース/顧客は #9/#10 まではインメモリのまま（移行途中の混在を許容, ADR-AB05）。
  */
 export function createContainer(options: ContainerOptions = {}): Container {
   const backend: AppBackend = options.backend ?? "memory";
-  if (backend === "blocks") {
-    throw new Error(
-      "backend 'blocks'（AWS Blocks）のアダプタは未実装です。" +
-        "各コンテキストは Issue #8 以降で順次移行します。現状は backend 'memory' を使用してください。",
-    );
-  }
 
   const clock: Clock = options.clock ?? new SystemClock();
   const bus = new InMemoryEventBus();
 
-  // リポジトリ（インメモリ実装）
+  // リポジトリ。予約のみ backend で切替（#8）。スペース/顧客は順次移行（#9/#10）。
   const spaces = new InMemorySpaceRepository();
   const customers = new InMemoryCustomerRepository();
-  const reservations = new InMemoryReservationRepository();
+  const reservations: ReservationRepository =
+    backend === "blocks" ? createBlocksReservationRepository() : new InMemoryReservationRepository();
 
   // 汎用サブドメイン（モックアダプタ）
   const payment = new MockPaymentAdapter();
@@ -157,4 +160,15 @@ export function createContainer(options: ContainerOptions = {}): Container {
     loginMock: new LoginMock(customers, adminLoginIds),
     adminLoginIds,
   };
+}
+
+/**
+ * AWS Blocks Database による予約リポジトリを構築する（#8）。
+ * ローカルは PGlite（`.bb-data/` に永続化, AWSアカウント不要）、デプロイ時は Aurora。
+ * マイグレーションは初回クエリ時に `aws-blocks/migrations` から適用される。
+ */
+function createBlocksReservationRepository(): ReservationRepository {
+  const migrationsPath = fileURLToPath(new URL("../../aws-blocks/migrations", import.meta.url));
+  const db = new Database(new Scope("rental-space-booking"), "reservations", { migrationsPath });
+  return new BlocksReservationRepository(db as unknown as SqlDatabase);
 }

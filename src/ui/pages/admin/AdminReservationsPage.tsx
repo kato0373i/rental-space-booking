@@ -29,9 +29,9 @@ export function AdminReservationsPage() {
 
   if (!session) return null;
 
-  const load = (page: number) => {
+  const load = async (page: number) => {
     setError(null);
-    const r = services.admin.listReservations(session, {
+    const r = await services.admin.listReservations(session, {
       status,
       spaceId,
       fromDayIso: fromDay,
@@ -58,8 +58,8 @@ export function AdminReservationsPage() {
     }
   };
 
-  const markNoShow = (reservationId: string) => {
-    const r = services.admin.markNoShow(session, reservationId);
+  const markNoShow = async (reservationId: string) => {
+    const r = await services.admin.markNoShow(session, reservationId);
     if (!r.ok) setError(errorMessage(r.error));
     else load(pageData?.page ?? 1);
   };

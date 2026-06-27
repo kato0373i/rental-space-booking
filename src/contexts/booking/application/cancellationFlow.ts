@@ -55,7 +55,7 @@ export async function runCancellation(
     }
   }
 
-  const saved = deps.reservations.save(reservation);
+  const saved = await deps.reservations.save(reservation);
   if (!saved.ok) return saved;
 
   deps.bus.publish(cancelled.value);

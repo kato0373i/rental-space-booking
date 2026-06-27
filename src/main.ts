@@ -22,7 +22,7 @@ async function main(): Promise<void> {
   line(`現在時刻: ${now.toIsoJst()} / 対象日: ${bookingDay.toIsoJst()}（${slot10.dayKind()}）`);
 
   // 1) 空き枠照会
-  const avail1 = app.searchAvailability.execute({ spaceId, fromDay: bookingDay, toDay: bookingDay });
+  const avail1 = await app.searchAvailability.execute({ spaceId, fromDay: bookingDay, toDay: bookingDay });
   line(`\n[空き枠照会] 空き ${avail1.ok ? avail1.value.freeSlots.length : "-"} スロット`);
 
   // 2) 見積もり（10:00-12:00 の2スロット）
@@ -44,7 +44,7 @@ async function main(): Promise<void> {
   const reservationId = ReservationId.of(placed.value.reservationId);
 
   // 4) 空き枠が減ったことを確認
-  const avail2 = app.searchAvailability.execute({ spaceId, fromDay: bookingDay, toDay: bookingDay });
+  const avail2 = await app.searchAvailability.execute({ spaceId, fromDay: bookingDay, toDay: bookingDay });
   line(`[空き枠照会] 予約後の空き ${avail2.ok ? avail2.value.freeSlots.length : "-"} スロット`);
 
   // 5) ダブルブッキング（同一スロット）→ 競合
@@ -59,7 +59,7 @@ async function main(): Promise<void> {
   app.notifier.clear();
   const reminderTime = JstDateTime.ofJstUnsafe(2026, 6, 23, 10, 0); // 開始の24h前
   clock.set(reminderTime);
-  const reminded = app.triggerReminders.execute({ referenceTime: reminderTime });
+  const reminded = await app.triggerReminders.execute({ referenceTime: reminderTime });
   line(`[リマインド] 送信 ${reminded.sent} 件`);
 
   // 7) キャンセル（利用開始24時間前 → 料率50%）
@@ -87,7 +87,7 @@ async function main(): Promise<void> {
 
   // 9) 決済失敗でスロットが解放されていることを確認
   app.payment.setBehavior("Succeed");
-  const avail3 = app.searchAvailability.execute({ spaceId, fromDay: bookingDay, toDay: bookingDay });
+  const avail3 = await app.searchAvailability.execute({ spaceId, fromDay: bookingDay, toDay: bookingDay });
   line(`[空き枠照会] 決済失敗後の空き ${avail3.ok ? avail3.value.freeSlots.length : "-"} スロット（解放確認）`);
 }
 
