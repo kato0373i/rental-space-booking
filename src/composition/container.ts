@@ -73,17 +73,38 @@ export type Container = {
   readonly adminLoginIds: Set<string>;
 };
 
+/**
+ * リポジトリ/アダプタの実装系統。
+ * - "memory": 既存のインメモリ/モック実装（既定。テスト・学習・デモ用）。
+ * - "blocks": AWS Blocks ベースの実装。各コンテキストを Issue #8 以降で順次移行する。
+ */
+export type AppBackend = "memory" | "blocks";
+
 export type ContainerOptions = {
   readonly clock?: Clock;
   /** 通知のコンソール出力を抑制する（テスト時 true）。 */
   readonly silentNotifications?: boolean;
+  /** 実装系統の選択（既定 "memory"）。AWS Blocks 版は段階移行中。 */
+  readonly backend?: AppBackend;
 };
 
 /**
- * 合成ルート（DI）。ポート↔実装の束ね（インメモリ/RDS 切替点, NFR-006）。
- * 別のリポジトリ実装（RDS）へ差し替える場合、ここの new を差し替えるだけでよい。
+ * 合成ルート（DI）。ポート↔実装の束ね（インメモリ/RDS・Blocks 切替点, NFR-006）。
+ * 別のリポジトリ実装（AWS Blocks 等）へ差し替える場合、ここの new を差し替えるだけでよい。
+ *
+ * `backend: "blocks"` は #7（基盤）でシームのみ用意済み。実アダプタは #8 以降で
+ * コンテキスト単位に追加するため、現時点では明示的に未実装として失敗させる
+ * （“動くように見えて中身が無い”状態を避ける）。
  */
 export function createContainer(options: ContainerOptions = {}): Container {
+  const backend: AppBackend = options.backend ?? "memory";
+  if (backend === "blocks") {
+    throw new Error(
+      "backend 'blocks'（AWS Blocks）のアダプタは未実装です。" +
+        "各コンテキストは Issue #8 以降で順次移行します。現状は backend 'memory' を使用してください。",
+    );
+  }
+
   const clock: Clock = options.clock ?? new SystemClock();
   const bus = new InMemoryEventBus();
 

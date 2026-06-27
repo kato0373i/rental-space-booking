@@ -65,6 +65,27 @@ npm run build:web   # フロントの本番ビルド（vite build）
 `docs/requirements/rental-space-booking-frontend.md`、設計は
 `docs/design/rental-space-booking-frontend.md` を参照。`npm run dev` で起動。
 
+## AWS Blocks バックエンド（段階移行中）
+
+インメモリ/モック実装を、ポートはそのままに [AWS Blocks](https://aws.amazon.com/products/developer-tools/blocks/)
+製の実アダプタへ段階的に置き換える取り組みを進めている（トラッキング: Issue #16）。
+
+- **方針**: ドメイン層（純TS / DDD の核）は一切触らず、`src/contexts/*/infrastructure/` と
+  `src/composition/` だけで差し替える。インメモリ実装は削除せず共存させる（テスト・学習用）。
+- **切替シーム**: `createContainer({ backend })` で実装系統を選ぶ。`"memory"`（既定）は従来どおり。
+  `"blocks"` は本 PR（#7 基盤）でシームのみ用意済みで、実アダプタは #8 以降で順次追加する
+  （未実装の現時点では明示的にエラーにする）。
+- **アプリ境界**: `aws-blocks/index.ts` に Blocks アプリの `Scope` と型付き RPC の入口を定義。
+  各 Building Block（Database / Cognito / SES / Realtime / CronJob / AsyncJob）はここに足していく。
+
+```bash
+npm run dev:blocks   # AWS Blocks ローカル開発サーバ（モック実装・AWSアカウント不要）
+npm run typecheck    # backend / ui / aws-blocks の3パス型チェック
+```
+
+> AWS Blocks は Preview。ローカル開発はモックで完結し AWS アカウント不要だが、本番採用は時期尚早。
+> README の「RDS 実装は将来拡張」スロットに位置づけている。
+
 ## 技術スタック
 
 - TypeScript 5.x（strict + 追加の厳格フラグ）

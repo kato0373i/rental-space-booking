@@ -1,0 +1,11 @@
+{
+  // AWS Blocks アプリ定義（aws-blocks/ 配下）専用の型チェック設定。
+  // backend 用 tsconfig.json を継承する。ドメイン/バックエンド(src) とは独立した
+  // ビルド単位であり、相互に import しない（依存方向の混線を型レベルで防ぐ）。
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": ["aws-blocks/**/*.ts"],
+  "exclude": ["node_modules", "dist"]
+}
