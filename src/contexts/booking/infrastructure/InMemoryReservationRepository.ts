@@ -101,9 +101,14 @@ export class InMemoryReservationRepository implements ReservationRepository {
   }
 
   list(filter: ReservationListFilter, paging: Paging): Page<Reservation> {
+    const fromEpoch = filter.fromInclusive?.epochMillis;
+    const toEpoch = filter.toExclusive?.epochMillis;
     const matched = [...this.store.values()].filter((snap) => {
       if (filter.status !== undefined && snap.status !== filter.status) return false;
       if (filter.spaceId !== undefined && snap.spaceId !== filter.spaceId) return false;
+      const startEpoch = snap.slotStartsEpoch[0];
+      if (fromEpoch !== undefined && (startEpoch === undefined || startEpoch < fromEpoch)) return false;
+      if (toEpoch !== undefined && (startEpoch === undefined || startEpoch >= toEpoch)) return false;
       return true;
     });
     matched.sort((a, b) => b.createdAtEpoch - a.createdAtEpoch);

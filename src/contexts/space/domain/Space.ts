@@ -109,6 +109,9 @@ export class Space {
   get slotDefinition(): SlotDefinition {
     return this.attrs.slotDefinition;
   }
+  get ratePlan(): RatePlan {
+    return this.attrs.ratePlan;
+  }
   get cancellationPolicy(): CancellationPolicy {
     return this.attrs.cancellationPolicy;
   }

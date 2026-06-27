@@ -8,6 +8,16 @@ import type { SlotDefinition } from "./SlotDefinition.js";
 
 const ALL_DAY_KINDS: readonly DayKind[] = ["Weekday", "Saturday", "Sunday"];
 
+/** 料金規則の素データ（編集フォーム初期値用, B-3）。 */
+export type RateRuleView = {
+  readonly dayKind: DayKind;
+  readonly fromHour: number;
+  readonly fromMinute: number;
+  readonly toHour: number;
+  readonly toMinute: number;
+  readonly unitPriceJpy: number;
+};
+
 /**
  * 料金表 VO（FR-005/011）。曜日区分×時間帯→単価の規則集合。
  * 価格計算ロジックは Space ドメインに残す（ADR-009）。
@@ -19,6 +29,18 @@ export class RatePlan {
   static of(rules: readonly RateRule[]): Result<RatePlan, string> {
     if (rules.length === 0) return err("料金表には少なくとも1つの規則が必要です");
     return ok(new RatePlan(rules));
+  }
+
+  /** 編集フォーム初期値用の素データ（B-3）。RateRule の分表現を時/分に戻す。 */
+  toRules(): RateRuleView[] {
+    return this.rules.map((r) => ({
+      dayKind: r.dayKind,
+      fromHour: Math.floor(r.fromMinute / 60),
+      fromMinute: r.fromMinute % 60,
+      toHour: Math.floor(r.toMinute / 60),
+      toMinute: r.toMinute % 60,
+      unitPriceJpy: r.unitPrice.amount,
+    }));
   }
 
   /** 単一スロットの単価。該当規則がなければ設定不備（被覆漏れ）として Err。 */

@@ -8,6 +8,10 @@ import type { ReservationStatus } from "../ReservationStatus.js";
 export type ReservationListFilter = {
   readonly status?: ReservationStatus;
   readonly spaceId?: SpaceId;
+  /** 利用開始がこの時刻以降の予約に絞る（管理者一覧の期間フィルタ, B-4/FR-AD05）。 */
+  readonly fromInclusive?: JstDateTime;
+  /** 利用開始がこの時刻より前の予約に絞る。 */
+  readonly toExclusive?: JstDateTime;
 };
 
 export type Paging = { readonly page: number; readonly size: number };

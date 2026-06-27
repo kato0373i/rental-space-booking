@@ -1,5 +1,6 @@
 import type { Clock } from "../../../shared/domain/Clock.js";
 import type { SpaceId } from "../../../shared/domain/Id.js";
+import type { JstDateTime } from "../../../shared/domain/JstDateTime.js";
 import type { Result } from "../../../shared/domain/Result.js";
 import { ok } from "../../../shared/domain/Result.js";
 import type { Actor } from "../../../shared/auth.js";
@@ -19,6 +20,10 @@ const MAX_SIZE = 100;
 export type ListAllInput = {
   readonly status?: ReservationStatus;
   readonly spaceId?: SpaceId;
+  /** 利用開始がこの時刻以降（期間フィルタ, FR-AD05）。 */
+  readonly fromInclusive?: JstDateTime;
+  /** 利用開始がこの時刻より前。 */
+  readonly toExclusive?: JstDateTime;
   readonly page?: number;
   readonly size?: number;
 };
@@ -40,6 +45,8 @@ export class ListAllReservations {
     const filter: ReservationListFilter = {
       ...(input.status !== undefined ? { status: input.status } : {}),
       ...(input.spaceId !== undefined ? { spaceId: input.spaceId } : {}),
+      ...(input.fromInclusive !== undefined ? { fromInclusive: input.fromInclusive } : {}),
+      ...(input.toExclusive !== undefined ? { toExclusive: input.toExclusive } : {}),
     };
 
     const result = this.reservations.list(filter, { page, size });
