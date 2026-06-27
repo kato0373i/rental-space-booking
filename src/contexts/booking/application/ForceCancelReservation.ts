@@ -37,7 +37,7 @@ export class ForceCancelReservation {
     const auth = requireAdmin(actor);
     if (!auth.ok) return auth;
 
-    const reservation = this.reservations.byId(input.reservationId);
+    const reservation = await this.reservations.byId(input.reservationId);
     if (!reservation) return err(notFound("予約が見つかりません"));
 
     return runCancellation(

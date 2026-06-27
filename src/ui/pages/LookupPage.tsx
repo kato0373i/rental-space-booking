@@ -18,9 +18,9 @@ export function LookupPage() {
     return (id: string) => map.get(id) ?? id;
   }, [services]);
 
-  const lookup = () => {
+  const lookup = async () => {
     setError(null);
-    const r = services.lookup(number.trim(), email.trim());
+    const r = await services.lookup(number.trim(), email.trim());
     if (r.ok) {
       setView(r.value);
     } else {
@@ -29,8 +29,8 @@ export function LookupPage() {
     }
   };
 
-  const refreshView = () => {
-    const r = services.lookup(number.trim(), email.trim());
+  const refreshView = async () => {
+    const r = await services.lookup(number.trim(), email.trim());
     if (r.ok) setView(r.value);
   };
 

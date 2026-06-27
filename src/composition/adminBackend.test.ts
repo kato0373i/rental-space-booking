@@ -67,21 +67,21 @@ describe("スペース一覧/詳細（B-2/B-3, FR-AD03/AD04）", () => {
 describe("全予約一覧の期間フィルタ（B-4, FR-AD05）", () => {
   it("利用開始が範囲内の予約のみ返る", async () => {
     await placeForMember();
-    const inRange = app.listAllReservations.execute(ADMIN, {
+    const inRange = await app.listAllReservations.execute(ADMIN, {
       fromInclusive: jst(2026, 6, 24, 0, 0),
       toExclusive: jst(2026, 6, 25, 0, 0),
     });
     expect(inRange.ok && inRange.value.total).toBe(1);
 
-    const outRange = app.listAllReservations.execute(ADMIN, {
+    const outRange = await app.listAllReservations.execute(ADMIN, {
       fromInclusive: jst(2026, 6, 25, 0, 0),
       toExclusive: jst(2026, 6, 26, 0, 0),
     });
     expect(outRange.ok && outRange.value.total).toBe(0);
   });
 
-  it("非管理者は ForbiddenError", () => {
-    const r = app.listAllReservations.execute({ role: "Member", customerId: memberId }, {});
+  it("非管理者は ForbiddenError", async () => {
+    const r = await app.listAllReservations.execute({ role: "Member", customerId: memberId }, {});
     expect(r.ok).toBe(false);
   });
 });

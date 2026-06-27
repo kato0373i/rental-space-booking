@@ -30,19 +30,27 @@ export type Page<T> = {
  * Cancelled/Aborted への遷移を保存すると占有を解放する。
  * version による楽観ロックで状態遷移競合（管理者強制 vs ゲスト）を IllegalState として検出する。
  */
+/**
+ * 全メソッドは非同期（Promise）。AWS Blocks の Database Block 等の実 I/O 実装を
+ * 同一ポートで受けられるようにするため（設計 docs/design/aws-blocks-async-ports.md, ADR-AB01）。
+ * インメモリ実装も本ポートを満たす（同期処理を Promise でラップ）。
+ */
 export interface ReservationRepository {
-  save(reservation: Reservation): Result<void, ConflictError | IllegalState>;
-  byId(id: ReservationId): Reservation | undefined;
-  byNumber(reservationNumber: string): Reservation | undefined;
-  byCustomer(customerId: CustomerId): Reservation[];
+  save(reservation: Reservation): Promise<Result<void, ConflictError | IllegalState>>;
+  byId(id: ReservationId): Promise<Reservation | undefined>;
+  byNumber(reservationNumber: string): Promise<Reservation | undefined>;
+  byCustomer(customerId: CustomerId): Promise<Reservation[]>;
   /** 指定スペース・期間で Pending/Confirmed が占有するスロット開始時刻（FR-010）。 */
   occupiedSlots(
     spaceId: SpaceId,
     fromInclusive: JstDateTime,
     toExclusive: JstDateTime,
-  ): JstDateTime[];
+  ): Promise<JstDateTime[]>;
   /** 管理者向け横断一覧（FR-019, オフセットページング）。 */
-  list(filter: ReservationListFilter, paging: Paging): Page<Reservation>;
+  list(filter: ReservationListFilter, paging: Paging): Promise<Page<Reservation>>;
   /** 利用開始が指定期間内の Confirmed 予約（FR-032 リマインド）。 */
-  confirmedStartingBetween(fromInclusive: JstDateTime, toExclusive: JstDateTime): Reservation[];
+  confirmedStartingBetween(
+    fromInclusive: JstDateTime,
+    toExclusive: JstDateTime,
+  ): Promise<Reservation[]>;
 }

@@ -37,7 +37,7 @@ describe("会員予約の customerId 紐づけ（ADR-F02）", () => {
     });
     expect(placed.ok).toBe(true);
 
-    const history = app.listMyReservations.execute(memberId);
+    const history = await app.listMyReservations.execute(memberId);
     expect(history.length).toBe(1);
     expect(history[0]!.status).toBe("Confirmed");
   });

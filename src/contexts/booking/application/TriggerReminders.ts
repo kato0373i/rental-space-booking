@@ -20,11 +20,11 @@ export class TriggerReminders {
     private readonly bus: EventBus,
   ) {}
 
-  execute(input: { readonly referenceTime: JstDateTime }): { readonly sent: number } {
+  async execute(input: { readonly referenceTime: JstDateTime }): Promise<{ readonly sent: number }> {
     const from = input.referenceTime;
     // [from, to) の半開区間。「ちょうど LEAD_HOURS 後」の開始を含めるため +1 分する。
     const to = input.referenceTime.addMinutes(LEAD_HOURS * 60 + 1);
-    const due = this.reservations.confirmedStartingBetween(from, to);
+    const due = await this.reservations.confirmedStartingBetween(from, to);
 
     for (const reservation of due) {
       const event: ReservationReminderDue = {

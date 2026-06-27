@@ -27,13 +27,13 @@ export class SearchAvailability {
     private readonly reservations: ReservationRepository,
   ) {}
 
-  execute(input: SearchAvailabilityInput): Result<AvailabilityResult, NotFound> {
+  async execute(input: SearchAvailabilityInput): Promise<Result<AvailabilityResult, NotFound>> {
     const candidates = this.catalog.generateSlots(input.spaceId, input.fromDay, input.toDay);
     if (!candidates.ok) return candidates;
 
     const fromInclusive = input.fromDay.startOfDayJst();
     const toExclusive = input.toDay.startOfDayJst().addDays(1);
-    const occupied = this.reservations.occupiedSlots(
+    const occupied = await this.reservations.occupiedSlots(
       input.spaceId,
       fromInclusive,
       toExclusive,

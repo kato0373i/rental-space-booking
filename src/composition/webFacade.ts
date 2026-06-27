@@ -90,26 +90,26 @@ export type AdminApi = {
   editSpace(session: SessionUser, spaceId: string, form: AdminSpaceFormInput): UiResult<void>;
   suspendSpace(session: SessionUser, spaceId: string): UiResult<void>;
   resumeSpace(session: SessionUser, spaceId: string): UiResult<void>;
-  listReservations(session: SessionUser, filter: AdminReservationFilter): UiResult<PageDto<ReservationRow>>;
+  listReservations(session: SessionUser, filter: AdminReservationFilter): Promise<UiResult<PageDto<ReservationRow>>>;
   forceCancel(session: SessionUser, reservationId: string, overrideZeroRate: boolean): Promise<UiResult<CancellationResult>>;
-  markNoShow(session: SessionUser, reservationId: string): UiResult<void>;
+  markNoShow(session: SessionUser, reservationId: string): Promise<UiResult<void>>;
 };
 
 /** UI が呼ぶアプリケーションサービスの facade（プリミティブ／DTO のみを授受）。 */
 export type AppServices = {
   listSpaces(): SpaceSummary[];
-  searchAvailability(spaceId: string, fromDayIso: string, toDayIso: string): UiResult<DayAvailabilityDto[]>;
+  searchAvailability(spaceId: string, fromDayIso: string, toDayIso: string): Promise<UiResult<DayAvailabilityDto[]>>;
   quote(spaceId: string, slotEpochs: readonly number[]): UiResult<number>;
   place(args: PlaceArgs): Promise<UiResult<PlaceResultDto>>;
-  lookup(reservationNumber: string, email: string): UiResult<ReservationView>;
+  lookup(reservationNumber: string, email: string): Promise<UiResult<ReservationView>>;
   cancel(reservationId: string, email: string): Promise<UiResult<CancellationResult>>;
-  listMyReservations(memberId: string): ReservationView[];
+  listMyReservations(memberId: string): Promise<ReservationView[]>;
   registerMember(input: ContactInput & { loginId: string; secret: string }): UiResult<{ customerId: string }>;
   login(loginId: string, secret: string): UiResult<SessionUser>;
   // デモ操作（ADR-F04）
   notifications(): NotificationMessage[];
   setPaymentBehavior(behavior: PaymentBehavior): void;
-  triggerReminders(): number;
+  triggerReminders(): Promise<number>;
   // 管理者（FR-AD01〜09）
   admin: AdminApi;
 };
@@ -151,8 +151,8 @@ export function createWebApp(): AppServices {
   return {
     listSpaces: () => c.listSpaces.execute(),
 
-    searchAvailability: (spaceId, fromDayIso, toDayIso) => {
-      const result = c.searchAvailability.execute({
+    searchAvailability: async (spaceId, fromDayIso, toDayIso) => {
+      const result = await c.searchAvailability.execute({
         spaceId: SpaceId.of(spaceId),
         fromDay: parseDay(fromDayIso),
         toDay: parseDay(toDayIso),
@@ -201,6 +201,9 @@ export function createWebApp(): AppServices {
 
     listMyReservations: (memberId) => c.listMyReservations.execute(CustomerId.of(memberId)),
 
+    // 注: lookup / listMyReservations は内側の execute が既に Promise を返すため、
+    // ここでは await せずそのまま返す（型は Promise<...> に一致する）。
+
     registerMember: (input) => c.registerMember.execute(input),
 
     login: (loginId, secret) => {
@@ -215,7 +218,8 @@ export function createWebApp(): AppServices {
 
     setPaymentBehavior: (behavior) => c.payment.setBehavior(behavior),
 
-    triggerReminders: () => c.triggerReminders.execute({ referenceTime: c.clock.now() }).sent,
+    triggerReminders: async () =>
+      (await c.triggerReminders.execute({ referenceTime: c.clock.now() })).sent,
 
     admin: {
       listSpaces: () => c.listSpaces.execute(true),
@@ -233,8 +237,8 @@ export function createWebApp(): AppServices {
       resumeSpace: (session, spaceId) =>
         c.resumeSpace.execute(toActor(session), { spaceId: SpaceId.of(spaceId) }),
 
-      listReservations: (session, filter) => {
-        const r = c.listAllReservations.execute(toActor(session), {
+      listReservations: async (session, filter) => {
+        const r = await c.listAllReservations.execute(toActor(session), {
           ...(filter.status ? { status: filter.status as ReservationStatus } : {}),
           ...(filter.spaceId ? { spaceId: SpaceId.of(filter.spaceId) } : {}),
           ...(filter.fromDayIso ? { fromInclusive: parseDay(filter.fromDayIso) } : {}),
@@ -261,6 +265,7 @@ export function createWebApp(): AppServices {
 
       markNoShow: (session, reservationId) =>
         c.markNoShow.execute(toActor(session), { reservationId: ReservationId.of(reservationId) }),
+      // 注: markNoShow / forceCancel は内側 execute が Promise を返すためそのまま返す。
     },
   };
 }

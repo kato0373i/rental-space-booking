@@ -61,10 +61,10 @@ export function AvailabilityPage() {
     return <p className="banner error">スペースが見つかりません。</p>;
   }
 
-  const search = () => {
+  const search = async () => {
     setError(null);
     setSelectedStart(null);
-    const r = services.searchAvailability(spaceId, fromDay, toDay);
+    const r = await services.searchAvailability(spaceId, fromDay, toDay);
     if (r.ok) {
       setDays(r.value);
     } else {

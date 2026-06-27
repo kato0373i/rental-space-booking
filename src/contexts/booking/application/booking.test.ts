@@ -42,12 +42,12 @@ const place = (slots: JstDateTime[], email?: string) =>
 
 describe("FR-010 空き枠照会", () => {
   it("確定予約のあるスロットは空きから除外される", async () => {
-    const before = app.searchAvailability.execute({ spaceId, fromDay: WED_DAY, toDay: WED_DAY });
+    const before = await app.searchAvailability.execute({ spaceId, fromDay: WED_DAY, toDay: WED_DAY });
     expect(before.ok && before.value.freeSlots.length).toBe(9);
 
     await place([WED_10, WED_11]);
 
-    const after = app.searchAvailability.execute({ spaceId, fromDay: WED_DAY, toDay: WED_DAY });
+    const after = await app.searchAvailability.execute({ spaceId, fromDay: WED_DAY, toDay: WED_DAY });
     expect(after.ok).toBe(true);
     if (!after.ok) return;
     expect(after.value.freeSlots.length).toBe(7);
@@ -62,7 +62,7 @@ describe("FR-010 空き枠照会", () => {
     const r2 = await place([jst(2026, 6, 24, 17, 0)], "b@example.com");
     expect(r2.ok).toBe(true);
 
-    const result = app.searchAvailability.execute({ spaceId, fromDay: WED_DAY, toDay: WED_DAY });
+    const result = await app.searchAvailability.execute({ spaceId, fromDay: WED_DAY, toDay: WED_DAY });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.freeSlots).toEqual([]);
@@ -96,11 +96,11 @@ describe("FR-012 予約作成（決済成功で確定）", () => {
     expect(r.error.kind).toBe("PaymentFailed");
 
     // スロットが解放されている
-    const avail = app.searchAvailability.execute({ spaceId, fromDay: WED_DAY, toDay: WED_DAY });
+    const avail = await app.searchAvailability.execute({ spaceId, fromDay: WED_DAY, toDay: WED_DAY });
     expect(avail.ok && avail.value.freeSlots.length).toBe(9);
 
     // Aborted 終端で残る（ADR-005）
-    const list = app.listAllReservations.execute(ADMIN, { status: "Aborted" });
+    const list = await app.listAllReservations.execute(ADMIN, { status: "Aborted" });
     expect(list.ok && list.value.total).toBe(1);
   });
 
@@ -111,7 +111,7 @@ describe("FR-012 予約作成（決済成功で確定）", () => {
     if (r.ok) return;
     expect(r.error.kind).toBe("PaymentFailed");
     if (r.error.kind === "PaymentFailed") expect(r.error.reason).toBe("TimedOut");
-    const avail = app.searchAvailability.execute({ spaceId, fromDay: WED_DAY, toDay: WED_DAY });
+    const avail = await app.searchAvailability.execute({ spaceId, fromDay: WED_DAY, toDay: WED_DAY });
     expect(avail.ok && avail.value.freeSlots.length).toBe(9);
   });
 });
@@ -254,7 +254,7 @@ describe("FR-016 予約照会", () => {
   it("予約番号＋メール一致で詳細が表示される", async () => {
     const r = await place([WED_10, WED_11]);
     if (!r.ok) return;
-    const found = app.lookupReservation.execute({
+    const found = await app.lookupReservation.execute({
       reservationNumber: r.value.reservationNumber,
       email: "hanako@example.com",
     });
@@ -267,7 +267,7 @@ describe("FR-016 予約照会", () => {
   it("メール不一致は存在を秘匿して NotFound", async () => {
     const r = await place([WED_10, WED_11]);
     if (!r.ok) return;
-    const found = app.lookupReservation.execute({
+    const found = await app.lookupReservation.execute({
       reservationNumber: r.value.reservationNumber,
       email: "wrong@example.com",
     });
@@ -282,7 +282,7 @@ describe("FR-017 利用完了への遷移（導出）", () => {
     const r = await place([WED_10, WED_11]);
     if (!r.ok) return;
     clock.set(jst(2026, 6, 24, 13, 0));
-    const found = app.lookupReservation.execute({
+    const found = await app.lookupReservation.execute({
       reservationNumber: r.value.reservationNumber,
       email: "hanako@example.com",
     });
@@ -296,16 +296,16 @@ describe("FR-018 ノーショー判定（管理者手動）", () => {
     if (!r.ok) return;
     const id = ReservationId.of(r.value.reservationId);
     clock.set(jst(2026, 6, 24, 13, 0));
-    const marked = app.markNoShow.execute(ADMIN, { reservationId: id });
+    const marked = await app.markNoShow.execute(ADMIN, { reservationId: id });
     expect(marked.ok).toBe(true);
-    const list = app.listAllReservations.execute(ADMIN, { status: "NoShow" });
+    const list = await app.listAllReservations.execute(ADMIN, { status: "NoShow" });
     expect(list.ok && list.value.total).toBe(1);
   });
 
   it("利用終了前はノーショーにできない", async () => {
     const r = await place([WED_10, WED_11]);
     if (!r.ok) return;
-    const marked = app.markNoShow.execute(ADMIN, {
+    const marked = await app.markNoShow.execute(ADMIN, {
       reservationId: ReservationId.of(r.value.reservationId),
     });
     expect(marked.ok).toBe(false);
@@ -381,7 +381,7 @@ describe("FR-032 リマインド", () => {
     const r = await place([WED_10, WED_11]);
     if (!r.ok) return;
     app.notifier.clear();
-    const reminded = app.triggerReminders.execute({
+    const reminded = await app.triggerReminders.execute({
       referenceTime: jst(2026, 6, 23, 10, 0), // 開始の24h前
     });
     expect(reminded.sent).toBe(1);
@@ -396,7 +396,7 @@ describe("FR-032 リマインド", () => {
       email: "hanako@example.com",
     });
     app.notifier.clear();
-    const reminded = app.triggerReminders.execute({
+    const reminded = await app.triggerReminders.execute({
       referenceTime: jst(2026, 6, 23, 10, 0),
     });
     expect(reminded.sent).toBe(0);

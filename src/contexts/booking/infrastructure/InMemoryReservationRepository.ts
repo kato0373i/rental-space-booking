@@ -29,7 +29,9 @@ export class InMemoryReservationRepository implements ReservationRepository {
     return `${spaceId}#${slotEpoch}`;
   }
 
-  save(reservation: Reservation): Result<void, ConflictError | IllegalState> {
+  // async だが内部で await を挟まないため、save 全体は単一マイクロタスクで
+  // 同期的に完結する（JS の run-to-completion）。占有確保のアトミック性は維持される（ADR-AB01）。
+  async save(reservation: Reservation): Promise<Result<void, ConflictError | IllegalState>> {
     const snap = reservation.toSnapshot();
     const existing = this.store.get(snap.id);
 
@@ -63,19 +65,19 @@ export class InMemoryReservationRepository implements ReservationRepository {
     return ok(undefined);
   }
 
-  byId(id: ReservationId): Reservation | undefined {
+  async byId(id: ReservationId): Promise<Reservation | undefined> {
     const snap = this.store.get(id);
     return snap ? Reservation.restore(snap) : undefined;
   }
 
-  byNumber(reservationNumber: string): Reservation | undefined {
+  async byNumber(reservationNumber: string): Promise<Reservation | undefined> {
     for (const snap of this.store.values()) {
       if (snap.reservationNumber === reservationNumber) return Reservation.restore(snap);
     }
     return undefined;
   }
 
-  byCustomer(customerId: CustomerId): Reservation[] {
+  async byCustomer(customerId: CustomerId): Promise<Reservation[]> {
     const out: Reservation[] = [];
     for (const snap of this.store.values()) {
       if (snap.customerId === customerId) out.push(Reservation.restore(snap));
@@ -83,11 +85,11 @@ export class InMemoryReservationRepository implements ReservationRepository {
     return out;
   }
 
-  occupiedSlots(
+  async occupiedSlots(
     spaceId: SpaceId,
     fromInclusive: JstDateTime,
     toExclusive: JstDateTime,
-  ): JstDateTime[] {
+  ): Promise<JstDateTime[]> {
     const from = fromInclusive.epochMillis;
     const to = toExclusive.epochMillis;
     const out: JstDateTime[] = [];
@@ -100,7 +102,7 @@ export class InMemoryReservationRepository implements ReservationRepository {
     return out;
   }
 
-  list(filter: ReservationListFilter, paging: Paging): Page<Reservation> {
+  async list(filter: ReservationListFilter, paging: Paging): Promise<Page<Reservation>> {
     const fromEpoch = filter.fromInclusive?.epochMillis;
     const toEpoch = filter.toExclusive?.epochMillis;
     const matched = [...this.store.values()].filter((snap) => {
@@ -122,10 +124,10 @@ export class InMemoryReservationRepository implements ReservationRepository {
     return { items, total, page: paging.page, size: paging.size };
   }
 
-  confirmedStartingBetween(
+  async confirmedStartingBetween(
     fromInclusive: JstDateTime,
     toExclusive: JstDateTime,
-  ): Reservation[] {
+  ): Promise<Reservation[]> {
     const from = fromInclusive.epochMillis;
     const to = toExclusive.epochMillis;
     const out: Reservation[] = [];

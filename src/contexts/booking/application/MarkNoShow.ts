@@ -22,20 +22,20 @@ export class MarkNoShow {
     private readonly clock: Clock,
   ) {}
 
-  execute(
+  async execute(
     actor: Actor,
     input: { readonly reservationId: ReservationId },
-  ): Result<void, MarkNoShowError> {
+  ): Promise<Result<void, MarkNoShowError>> {
     const auth = requireAdmin(actor);
     if (!auth.ok) return auth;
 
-    const reservation = this.reservations.byId(input.reservationId);
+    const reservation = await this.reservations.byId(input.reservationId);
     if (!reservation) return err(notFound("予約が見つかりません"));
 
     const marked = reservation.markNoShow(this.clock.now());
     if (!marked.ok) return marked;
 
-    const saved = this.reservations.save(reservation);
+    const saved = await this.reservations.save(reservation);
     if (!saved.ok) return saved;
 
     return ok(undefined);

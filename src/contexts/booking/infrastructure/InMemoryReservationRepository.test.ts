@@ -24,42 +24,42 @@ const pendingOn = (customer: string): Reservation =>
   });
 
 describe("InMemoryReservationRepository（占有の check-and-set, ADR-002/003）", () => {
-  it("Pending 作成と同時に占有を確保し、同一スロットの後続は ConflictError", () => {
+  it("Pending 作成と同時に占有を確保し、同一スロットの後続は ConflictError", async () => {
     const repo = new InMemoryReservationRepository();
 
     const a = pendingOn("cust-a");
-    expect(repo.save(a).ok).toBe(true);
+    expect((await repo.save(a)).ok).toBe(true);
 
     const b = pendingOn("cust-b");
-    const result = repo.save(b);
+    const result = await repo.save(b);
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.error.kind).toBe("ConflictError");
   });
 
-  it("Aborted への遷移を保存すると占有が解放され、再確保できる", () => {
+  it("Aborted への遷移を保存すると占有が解放され、再確保できる", async () => {
     const repo = new InMemoryReservationRepository();
 
     const a = pendingOn("cust-a");
-    repo.save(a);
+    await repo.save(a);
     unwrap(a.abort("Failed", now)); // 解放
-    expect(repo.save(a).ok).toBe(true);
+    expect((await repo.save(a)).ok).toBe(true);
 
     const b = pendingOn("cust-b");
-    expect(repo.save(b).ok).toBe(true); // 解放後は確保できる
+    expect((await repo.save(b)).ok).toBe(true); // 解放後は確保できる
   });
 
-  it("占有スロットは Pending/Confirmed のみが主張する", () => {
+  it("占有スロットは Pending/Confirmed のみが主張する", async () => {
     const repo = new InMemoryReservationRepository();
     const a = pendingOn("cust-a");
-    repo.save(a);
+    await repo.save(a);
 
     const from = JstDateTime.ofJstUnsafe(2026, 6, 24, 0, 0);
     const to = from.addDays(1);
-    expect(repo.occupiedSlots(spaceId, from, to).length).toBe(1);
+    expect((await repo.occupiedSlots(spaceId, from, to)).length).toBe(1);
 
     unwrap(a.abort("Failed", now));
-    repo.save(a);
-    expect(repo.occupiedSlots(spaceId, from, to).length).toBe(0);
+    await repo.save(a);
+    expect((await repo.occupiedSlots(spaceId, from, to)).length).toBe(0);
   });
 });

@@ -35,7 +35,10 @@ export class ListAllReservations {
     private readonly clock: Clock,
   ) {}
 
-  execute(actor: Actor, input: ListAllInput): Result<Page<ReservationView>, ForbiddenError> {
+  async execute(
+    actor: Actor,
+    input: ListAllInput,
+  ): Promise<Result<Page<ReservationView>, ForbiddenError>> {
     const auth = requireAdmin(actor);
     if (!auth.ok) return auth;
 
@@ -49,7 +52,7 @@ export class ListAllReservations {
       ...(input.toExclusive !== undefined ? { toExclusive: input.toExclusive } : {}),
     };
 
-    const result = this.reservations.list(filter, { page, size });
+    const result = await this.reservations.list(filter, { page, size });
     const now = this.clock.now();
     return ok({
       items: result.items.map((r) => toReservationView(r, now)),

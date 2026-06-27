@@ -23,8 +23,8 @@ export class LookupReservation {
     private readonly clock: Clock,
   ) {}
 
-  execute(input: LookupInput): Result<ReservationView, NotFound> {
-    const reservation = this.reservations.byNumber(input.reservationNumber);
+  async execute(input: LookupInput): Promise<Result<ReservationView, NotFound>> {
+    const reservation = await this.reservations.byNumber(input.reservationNumber);
     if (!reservation) return err(notFound("該当する予約が見つかりません"));
     if (!this.customers.emailMatches(reservation.customerId, input.email)) {
       return err(notFound("該当する予約が見つかりません"));
