@@ -28,7 +28,7 @@ export class SearchAvailability {
   ) {}
 
   async execute(input: SearchAvailabilityInput): Promise<Result<AvailabilityResult, NotFound>> {
-    const candidates = this.catalog.generateSlots(input.spaceId, input.fromDay, input.toDay);
+    const candidates = await this.catalog.generateSlots(input.spaceId, input.fromDay, input.toDay);
     if (!candidates.ok) return candidates;
 
     const fromInclusive = input.fromDay.startOfDayJst();

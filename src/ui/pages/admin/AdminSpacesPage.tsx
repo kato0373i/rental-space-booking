@@ -1,5 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import type { SpaceSummary } from "../../../composition/webFacade.js";
 import { useApp } from "../../app/AppContext.js";
 import { errorMessage } from "../../app/errorMessage.js";
 
@@ -9,18 +10,29 @@ export function AdminSpacesPage() {
   const [tick, setTick] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
-  const spaces = useMemo(
-    () => (session ? services.admin.listSpaces(session) : []),
-    [services, session, tick],
-  );
+  // admin.listSpaces は非同期（DBバックエンド対応, ADR-AB01）。
+  const [spaces, setSpaces] = useState<SpaceSummary[]>([]);
+  useEffect(() => {
+    if (!session) {
+      setSpaces([]);
+      return;
+    }
+    let alive = true;
+    void services.admin.listSpaces(session).then((s) => {
+      if (alive) setSpaces(s);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [services, session, tick]);
 
   if (!session) return null;
 
-  const toggle = (spaceId: string, publishState: string) => {
+  const toggle = async (spaceId: string, publishState: string) => {
     const r =
       publishState === "Published"
-        ? services.admin.suspendSpace(session, spaceId)
-        : services.admin.resumeSpace(session, spaceId);
+        ? await services.admin.suspendSpace(session, spaceId)
+        : await services.admin.resumeSpace(session, spaceId);
     if (!r.ok) {
       setError(errorMessage(r.error));
     } else {

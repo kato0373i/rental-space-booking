@@ -11,18 +11,18 @@ import type { SpaceRepository } from "../domain/ports/SpaceRepository.js";
 export class ResumeSpace {
   constructor(private readonly spaces: SpaceRepository) {}
 
-  execute(
+  async execute(
     actor: Actor,
     input: { readonly spaceId: SpaceId },
-  ): Result<void, ForbiddenError | NotFound> {
+  ): Promise<Result<void, ForbiddenError | NotFound>> {
     const auth = requireAdmin(actor);
     if (!auth.ok) return auth;
 
-    const space = this.spaces.byId(input.spaceId);
+    const space = await this.spaces.byId(input.spaceId);
     if (!space) return err(notFound("スペースが見つかりません"));
 
     space.resume();
-    this.spaces.save(space);
+    await this.spaces.save(space);
     return ok(undefined);
   }
 }

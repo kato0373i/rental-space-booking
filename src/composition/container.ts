@@ -35,6 +35,8 @@ import { ResumeSpace } from "../contexts/space/application/ResumeSpace.js";
 import { SpaceCatalogQueryService } from "../contexts/space/application/SpaceCatalogQueryService.js";
 import { SuspendSpace } from "../contexts/space/application/SuspendSpace.js";
 import { InMemorySpaceRepository } from "../contexts/space/infrastructure/InMemorySpaceRepository.js";
+import { BlocksSpaceRepository } from "../contexts/space/infrastructure/BlocksSpaceRepository.js";
+import type { SpaceRepository } from "../contexts/space/domain/ports/SpaceRepository.js";
 
 // Customer
 import { CustomerDirectoryService } from "../contexts/customer/application/CustomerDirectoryService.js";
@@ -53,7 +55,8 @@ export type Container = {
   readonly notifier: MockNotificationAdapter;
   readonly catalog: SpaceCatalogPort;
   readonly directory: CustomerDirectoryPort;
-  readonly spaces: InMemorySpaceRepository;
+  /** スペースリポジトリ（backend に応じてインメモリ or AWS Blocks 実装。ADR-AB03）。 */
+  readonly spaces: SpaceRepository;
   readonly customers: InMemoryCustomerRepository;
   /** 予約リポジトリ（backend に応じてインメモリ or AWS Blocks 実装。ADR-AB03）。 */
   readonly reservations: ReservationRepository;
@@ -110,11 +113,16 @@ export function createContainer(options: ContainerOptions = {}): Container {
   const clock: Clock = options.clock ?? new SystemClock();
   const bus = new InMemoryEventBus();
 
-  // リポジトリ。予約のみ backend で切替（#8）。スペース/顧客は順次移行（#9/#10）。
-  const spaces = new InMemorySpaceRepository();
+  // リポジトリ。予約・スペースは backend で切替（#8/#9）。顧客は順次移行（#10）。
+  // blocks では 1 つの Database を予約・スペースで共有する（マイグレーションは初回クエリ時に一括適用）。
+  const blocksDb = backend === "blocks" ? createBlocksDb() : undefined;
+  const spaces: SpaceRepository = blocksDb
+    ? new BlocksSpaceRepository(blocksDb)
+    : new InMemorySpaceRepository();
   const customers = new InMemoryCustomerRepository();
-  const reservations: ReservationRepository =
-    backend === "blocks" ? createBlocksReservationRepository() : new InMemoryReservationRepository();
+  const reservations: ReservationRepository = blocksDb
+    ? new BlocksReservationRepository(blocksDb)
+    : new InMemoryReservationRepository();
 
   // 汎用サブドメイン（モックアダプタ）
   const payment = new MockPaymentAdapter();
@@ -163,12 +171,12 @@ export function createContainer(options: ContainerOptions = {}): Container {
 }
 
 /**
- * AWS Blocks Database による予約リポジトリを構築する（#8）。
+ * AWS Blocks Database を構築する（#8/#9）。予約・スペースのリポジトリで共有する。
  * ローカルは PGlite（`.bb-data/` に永続化, AWSアカウント不要）、デプロイ時は Aurora。
- * マイグレーションは初回クエリ時に `aws-blocks/migrations` から適用される。
+ * マイグレーションは初回クエリ時に `aws-blocks/migrations` から一括適用される。
  */
-function createBlocksReservationRepository(): ReservationRepository {
+function createBlocksDb(): SqlDatabase {
   const migrationsPath = fileURLToPath(new URL("../../aws-blocks/migrations", import.meta.url));
-  const db = new Database(new Scope("rental-space-booking"), "reservations", { migrationsPath });
-  return new BlocksReservationRepository(db as unknown as SqlDatabase);
+  const db = new Database(new Scope("rental-space-booking"), "main", { migrationsPath });
+  return db as unknown as SqlDatabase;
 }

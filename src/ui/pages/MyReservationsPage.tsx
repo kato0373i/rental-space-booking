@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { CancelControl } from "../components/CancelControl.js";
 import type { ReservationView } from "../../composition/webFacade.js";
 import { useApp } from "../app/AppContext.js";
+import { useSpaceNames } from "../app/useSpaceNames.js";
 import { fmtDateTime, statusLabel, yen } from "../app/format.js";
 
 /** 会員の予約履歴一覧（FR-F09）。確定予約はキャンセル可能。 */
@@ -25,10 +26,7 @@ export function MyReservationsPage() {
     };
   }, [services, session, tick]);
 
-  const spaceName = useMemo(() => {
-    const map = new Map(services.listSpaces().map((s) => [s.spaceId, s.name]));
-    return (id: string) => map.get(id) ?? id;
-  }, [services]);
+  const spaceName = useSpaceNames(services);
 
   if (!session) {
     return (

@@ -29,16 +29,16 @@ export type SpaceCatalogDto = {
  * スペースカタログ照会ポート（Booking が所有・Space が実装供給, 依存性逆転）。
  */
 export interface SpaceCatalogPort {
-  getCatalog(spaceId: SpaceId): Result<SpaceCatalogDto, NotFound>;
+  getCatalog(spaceId: SpaceId): Promise<Result<SpaceCatalogDto, NotFound>>;
   /** 連続スロット群の合計金額（FR-011）。価格計算は Space 側で実施。 */
   quote(
     spaceId: SpaceId,
     slotStarts: readonly JstDateTime[],
-  ): Result<Money, NotFound | ValidationError>;
+  ): Promise<Result<Money, NotFound | ValidationError>>;
   /** 指定 JST 暦日範囲 [fromDay, toDay] の営業スロット開始時刻すべて（FR-010 候補生成元）。 */
   generateSlots(
     spaceId: SpaceId,
     fromDay: JstDateTime,
     toDay: JstDateTime,
-  ): Result<JstDateTime[], NotFound>;
+  ): Promise<Result<JstDateTime[], NotFound>>;
 }

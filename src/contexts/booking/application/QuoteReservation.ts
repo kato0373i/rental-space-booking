@@ -14,7 +14,7 @@ export type QuoteInput = {
 export class QuoteReservation {
   constructor(private readonly catalog: SpaceCatalogPort) {}
 
-  execute(input: QuoteInput): Result<Money, NotFound | ValidationError> {
+  async execute(input: QuoteInput): Promise<Result<Money, NotFound | ValidationError>> {
     return this.catalog.quote(input.spaceId, input.slotStarts);
   }
 }

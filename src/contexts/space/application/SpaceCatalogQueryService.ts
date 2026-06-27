@@ -18,8 +18,8 @@ import type { SpaceRepository } from "../domain/ports/SpaceRepository.js";
 export class SpaceCatalogQueryService implements SpaceCatalogPort {
   constructor(private readonly spaces: SpaceRepository) {}
 
-  getCatalog(spaceId: SpaceId): Result<SpaceCatalogDto, NotFound> {
-    const space = this.spaces.byId(spaceId);
+  async getCatalog(spaceId: SpaceId): Promise<Result<SpaceCatalogDto, NotFound>> {
+    const space = await this.spaces.byId(spaceId);
     if (!space) return err(notFound("スペースが見つかりません"));
     return ok({
       spaceId,
@@ -34,21 +34,21 @@ export class SpaceCatalogQueryService implements SpaceCatalogPort {
     });
   }
 
-  quote(
+  async quote(
     spaceId: SpaceId,
     slotStarts: readonly JstDateTime[],
-  ): Result<Money, NotFound | ValidationError> {
-    const space = this.spaces.byId(spaceId);
+  ): Promise<Result<Money, NotFound | ValidationError>> {
+    const space = await this.spaces.byId(spaceId);
     if (!space) return err(notFound("スペースが見つかりません"));
     return space.quote(slotStarts);
   }
 
-  generateSlots(
+  async generateSlots(
     spaceId: SpaceId,
     fromDay: JstDateTime,
     toDay: JstDateTime,
-  ): Result<JstDateTime[], NotFound> {
-    const space = this.spaces.byId(spaceId);
+  ): Promise<Result<JstDateTime[], NotFound>> {
+    const space = await this.spaces.byId(spaceId);
     if (!space) return err(notFound("スペースが見つかりません"));
 
     const out: JstDateTime[] = [];

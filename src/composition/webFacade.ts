@@ -84,12 +84,12 @@ export type AdminReservationFilter = {
 
 /** 管理者向け facade（認可は session のロールから Actor を構築し requireAdmin で強制, ADR-AD01）。 */
 export type AdminApi = {
-  listSpaces(session: SessionUser): SpaceSummary[];
-  getSpaceDetail(session: SessionUser, spaceId: string): UiResult<SpaceDetail>;
-  registerSpace(session: SessionUser, form: AdminSpaceFormInput): UiResult<{ readonly spaceId: string }>;
-  editSpace(session: SessionUser, spaceId: string, form: AdminSpaceFormInput): UiResult<void>;
-  suspendSpace(session: SessionUser, spaceId: string): UiResult<void>;
-  resumeSpace(session: SessionUser, spaceId: string): UiResult<void>;
+  listSpaces(session: SessionUser): Promise<SpaceSummary[]>;
+  getSpaceDetail(session: SessionUser, spaceId: string): Promise<UiResult<SpaceDetail>>;
+  registerSpace(session: SessionUser, form: AdminSpaceFormInput): Promise<UiResult<{ readonly spaceId: string }>>;
+  editSpace(session: SessionUser, spaceId: string, form: AdminSpaceFormInput): Promise<UiResult<void>>;
+  suspendSpace(session: SessionUser, spaceId: string): Promise<UiResult<void>>;
+  resumeSpace(session: SessionUser, spaceId: string): Promise<UiResult<void>>;
   listReservations(session: SessionUser, filter: AdminReservationFilter): Promise<UiResult<PageDto<ReservationRow>>>;
   forceCancel(session: SessionUser, reservationId: string, overrideZeroRate: boolean): Promise<UiResult<CancellationResult>>;
   markNoShow(session: SessionUser, reservationId: string): Promise<UiResult<void>>;
@@ -97,9 +97,9 @@ export type AdminApi = {
 
 /** UI が呼ぶアプリケーションサービスの facade（プリミティブ／DTO のみを授受）。 */
 export type AppServices = {
-  listSpaces(): SpaceSummary[];
+  listSpaces(): Promise<SpaceSummary[]>;
   searchAvailability(spaceId: string, fromDayIso: string, toDayIso: string): Promise<UiResult<DayAvailabilityDto[]>>;
-  quote(spaceId: string, slotEpochs: readonly number[]): UiResult<number>;
+  quote(spaceId: string, slotEpochs: readonly number[]): Promise<UiResult<number>>;
   place(args: PlaceArgs): Promise<UiResult<PlaceResultDto>>;
   lookup(reservationNumber: string, email: string): Promise<UiResult<ReservationView>>;
   cancel(reservationId: string, email: string): Promise<UiResult<CancellationResult>>;
@@ -144,9 +144,9 @@ const toActor = (session: SessionUser): Actor => ({
  * ブラウザ内アプリの起動（ADR-F01）。コンテナ生成＋シードを行い、UI 向け facade を返す。
  * ページロードごとに1インスタンス。データはインメモリでリロード揮発（NFR-F03）。
  */
-export function createWebApp(): AppServices {
+export async function createWebApp(): Promise<AppServices> {
   const c = createContainer();
-  seed(c);
+  await seed(c);
 
   return {
     listSpaces: () => c.listSpaces.execute(),
@@ -175,8 +175,8 @@ export function createWebApp(): AppServices {
       return { ok: true, value: days };
     },
 
-    quote: (spaceId, slotEpochs) => {
-      const result = c.quoteReservation.execute({
+    quote: async (spaceId, slotEpochs) => {
+      const result = await c.quoteReservation.execute({
         spaceId: SpaceId.of(spaceId),
         slotStarts: slotEpochs.map((e) => JstDateTime.fromEpochMillis(e)),
       });

@@ -15,10 +15,10 @@ let app: Container;
 let spaceId: SpaceId;
 let memberId: CustomerId;
 
-beforeEach(() => {
+beforeEach(async () => {
   const clock = new FixedClock(NOW);
   app = createContainer({ clock, silentNotifications: true });
-  const s = seed(app);
+  const s = await seed(app);
   spaceId = s.spaceId;
   memberId = s.memberId;
 });
@@ -71,15 +71,15 @@ describe("会員予約の customerId 紐づけ（ADR-F02）", () => {
 });
 
 describe("ListSpaces（FR-F01）", () => {
-  it("公開中スペースを一覧する", () => {
-    const spaces = app.listSpaces.execute();
+  it("公開中スペースを一覧する", async () => {
+    const spaces = await app.listSpaces.execute();
     expect(spaces.length).toBe(2); // 会議室A, スタジオB
     expect(spaces.map((s) => s.name)).toContain("会議室A");
   });
 
-  it("公開停止したスペースは一覧に出ない", () => {
-    app.suspendSpace.execute(ADMIN, { spaceId });
-    const spaces = app.listSpaces.execute();
+  it("公開停止したスペースは一覧に出ない", async () => {
+    await app.suspendSpace.execute(ADMIN, { spaceId });
+    const spaces = await app.listSpaces.execute();
     expect(spaces.length).toBe(1);
     expect(spaces.map((s) => s.name)).not.toContain("会議室A");
   });

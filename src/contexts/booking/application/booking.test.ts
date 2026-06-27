@@ -31,10 +31,10 @@ let app: Container;
 let clock: FixedClock;
 let spaceId: SpaceId;
 
-beforeEach(() => {
+beforeEach(async () => {
   clock = new FixedClock(NOW);
   app = createContainer({ clock, silentNotifications: true });
-  spaceId = seed(app).spaceId;
+  spaceId = (await seed(app)).spaceId;
 });
 
 const place = (slots: JstDateTime[], email?: string) =>
@@ -70,8 +70,8 @@ describe("FR-010 空き枠照会", () => {
 });
 
 describe("FR-011 見積もり", () => {
-  it("複数スロットの合計を見積もる（平日1000×2=2000）", () => {
-    const q = app.quoteReservation.execute({ spaceId, slotStarts: [WED_10, WED_11] });
+  it("複数スロットの合計を見積もる（平日1000×2=2000）", async () => {
+    const q = await app.quoteReservation.execute({ spaceId, slotStarts: [WED_10, WED_11] });
     expect(q.ok).toBe(true);
     if (!q.ok) return;
     expect(q.value.amount).toBe(2000);
@@ -178,7 +178,7 @@ describe("FR-014 予約ルール検証", () => {
       ],
       cancellationTiers: [{ hoursBefore: 0, feeRatePct: 50 }],
     };
-    const reg = app.registerSpace.execute(ADMIN, input);
+    const reg = await app.registerSpace.execute(ADMIN, input);
     expect(reg.ok).toBe(true);
     if (!reg.ok) return;
     const min2Space = SpaceId.of(reg.value.spaceId);
@@ -360,7 +360,7 @@ describe("FR-003 公開停止", () => {
     expect(r.ok).toBe(true);
     if (!r.ok) return;
 
-    const suspended = app.suspendSpace.execute(ADMIN, { spaceId });
+    const suspended = await app.suspendSpace.execute(ADMIN, { spaceId });
     expect(suspended.ok).toBe(true);
 
     // 新規予約は受け付けない
@@ -404,8 +404,8 @@ describe("FR-032 リマインド", () => {
 });
 
 describe("FR-042 認可", () => {
-  it("ゲストはスペース登録できない", () => {
-    const reg = app.registerSpace.execute(GUEST, {
+  it("ゲストはスペース登録できない", async () => {
+    const reg = await app.registerSpace.execute(GUEST, {
       name: "x",
       capacity: 1,
       openHour: 9,

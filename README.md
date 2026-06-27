@@ -73,8 +73,8 @@ npm run build:web   # フロントの本番ビルド（vite build）
 - **方針**: ドメイン層（純TS / DDD の核）は一切触らず、`src/contexts/*/infrastructure/` と
   `src/composition/` だけで差し替える。インメモリ実装は削除せず共存させる（テスト・学習用）。
 - **切替シーム**: `createContainer({ backend })` で実装系統を選ぶ。`"memory"`（既定）は従来どおり。
-  `"blocks"` は予約リポジトリを AWS Blocks Database 実装（Postgres / ローカルは PGlite）に切り替える（#8 実装済み）。
-  スペース/顧客は #9/#10 までインメモリのまま（移行途中の混在を許容, ADR-AB05）。
+  `"blocks"` は予約・スペースのリポジトリを AWS Blocks Database 実装（Postgres / ローカルは PGlite）に切り替える（#8/#9 実装済み）。
+  顧客は #10 までインメモリのまま（移行途中の混在を許容, ADR-AB05）。
 - **非同期ポート**: リポジトリポートは async（Promise）化済み。設計は `docs/design/aws-blocks-async-ports.md`。
 - **アプリ境界**: `aws-blocks/index.ts` に Blocks アプリの `Scope` と型付き RPC の入口を定義。
   各 Building Block（Database / Cognito / SES / Realtime / CronJob / AsyncJob）はここに足していく。

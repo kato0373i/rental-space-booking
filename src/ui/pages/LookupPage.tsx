@@ -1,7 +1,8 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import type { ReservationView } from "../../composition/webFacade.js";
 import { CancelControl } from "../components/CancelControl.js";
 import { useApp } from "../app/AppContext.js";
+import { useSpaceNames } from "../app/useSpaceNames.js";
 import { errorMessage } from "../app/errorMessage.js";
 import { fmtDateTime, statusLabel, yen } from "../app/format.js";
 
@@ -13,10 +14,7 @@ export function LookupPage() {
   const [view, setView] = useState<ReservationView | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const spaceName = useMemo(() => {
-    const map = new Map(services.listSpaces().map((s) => [s.spaceId, s.name]));
-    return (id: string) => map.get(id) ?? id;
-  }, [services]);
+  const spaceName = useSpaceNames(services);
 
   const lookup = async () => {
     setError(null);

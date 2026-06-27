@@ -12,7 +12,7 @@ async function main(): Promise<void> {
   const now = JstDateTime.ofJstUnsafe(2026, 6, 22, 9, 0); // 月曜 09:00 JST
   const clock = new FixedClock(now);
   const app = createContainer({ clock });
-  const { spaceId } = seed(app);
+  const { spaceId } = await seed(app);
 
   const bookingDay = JstDateTime.ofJstUnsafe(2026, 6, 24, 0, 0); // 水曜
   const slot10 = JstDateTime.ofJstUnsafe(2026, 6, 24, 10, 0);
@@ -26,7 +26,7 @@ async function main(): Promise<void> {
   line(`\n[空き枠照会] 空き ${avail1.ok ? avail1.value.freeSlots.length : "-"} スロット`);
 
   // 2) 見積もり（10:00-12:00 の2スロット）
-  const quote = app.quoteReservation.execute({ spaceId, slotStarts: [slot10, slot11] });
+  const quote = await app.quoteReservation.execute({ spaceId, slotStarts: [slot10, slot11] });
   line(`[見積もり] ${quote.ok ? quote.value.toString() : JSON.stringify(quote.error)}`);
 
   // 3) 予約作成（決済成功）
