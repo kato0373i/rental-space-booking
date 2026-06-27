@@ -1,6 +1,6 @@
 import { fileURLToPath } from "node:url";
 import { Scope } from "@aws-blocks/core";
-import { Database } from "@aws-blocks/blocks";
+import { Database, EmailClient } from "@aws-blocks/blocks";
 import type { Clock } from "../shared/domain/Clock.js";
 import { SystemClock } from "../shared/domain/Clock.js";
 import { InMemoryEventBus, type EventBus } from "../shared/domain/EventBus.js";
@@ -45,7 +45,11 @@ import { RegisterMember } from "../contexts/customer/application/RegisterMember.
 import { InMemoryCustomerRepository } from "../contexts/customer/infrastructure/InMemoryCustomerRepository.js";
 
 // Payment / Notification
+import type { NotificationPort } from "../contexts/booking/application/ports/NotificationPort.js";
 import { MockNotificationAdapter } from "../contexts/notification/infrastructure/MockNotificationAdapter.js";
+import { SesNotificationAdapter } from "../contexts/notification/infrastructure/SesNotificationAdapter.js";
+import { TeeNotificationAdapter } from "../contexts/notification/infrastructure/TeeNotificationAdapter.js";
+import { CustomerEmailResolver } from "../contexts/customer/application/CustomerEmailResolver.js";
 import { MockPaymentAdapter } from "../contexts/payment/infrastructure/MockPaymentAdapter.js";
 
 export type Container = {
@@ -132,8 +136,24 @@ export function createContainer(options: ContainerOptions = {}): Container {
   const catalog: SpaceCatalogPort = new SpaceCatalogQueryService(spaces);
   const directory: CustomerDirectoryPort = new CustomerDirectoryService(customers);
 
-  // 通知購読（Booking → Notification, 結果整合）
-  new NotificationHandlers(notifier, directory).register(bus);
+  // 通知購読（Booking → Notification, 結果整合）。
+  // blocks では SES（Email Block）へ実送信しつつ、デモ用の送信ログ（notifier=Mock）も温存する（#11）。
+  // memory では従来どおり Mock のみ。notifier 自体は常に Mock 型で公開し、introspection（sent/clear）を維持。
+  const notifyPort: NotificationPort =
+    backend === "blocks"
+      ? new TeeNotificationAdapter([
+          new SesNotificationAdapter(
+            // ローカルは Email Block のモック（外部送信なし）。実送信切替時は
+            // SES で検証済みの送信元アドレスへ差し替える（#15 / デプロイ時 TODO）。
+            new EmailClient(new Scope("rental-space-booking"), "notifications", {
+              fromAddress: "noreply@example.com",
+            }),
+            new CustomerEmailResolver(customers),
+          ),
+          notifier,
+        ])
+      : notifier;
+  new NotificationHandlers(notifyPort, directory).register(bus);
 
   // 管理者 loginId 集合（シードが登録）。LoginMock と共有して Admin ロールを判定（B-1）。
   const adminLoginIds = new Set<string>();

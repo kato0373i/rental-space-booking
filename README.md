@@ -73,9 +73,17 @@ npm run build:web   # フロントの本番ビルド（vite build）
 - **方針**: ドメイン層（純TS / DDD の核）は一切触らず、`src/contexts/*/infrastructure/` と
   `src/composition/` だけで差し替える。インメモリ実装は削除せず共存させる（テスト・学習用）。
 - **切替シーム**: `createContainer({ backend })` で実装系統を選ぶ。`"memory"`（既定）は従来どおり。
-  `"blocks"` は予約・スペースのリポジトリを AWS Blocks Database 実装（Postgres / ローカルは PGlite）に切り替える（#8/#9 実装済み）。
-  顧客は #10 までインメモリのまま（移行途中の混在を許容, ADR-AB05）。
-- **非同期ポート**: リポジトリポートは async（Promise）化済み。設計は `docs/design/aws-blocks-async-ports.md`。
+  `"blocks"` は移行済みコンテキストのみ実アダプタに載せ替える。顧客は #10 までインメモリのまま
+  （移行途中の混在を許容, ADR-AB05）。
+- **実装状況**:
+  - ✅ #8 予約リポジトリ → Database 実装（Postgres / ローカルは PGlite）。複合PKでダブルブッキングを物理強制。
+  - ✅ #9 スペースリポジトリ → Database 実装（予約と同一 DB を共有）。
+  - ✅ #11 通知 → Email Block（SES）。確定/キャンセル/リマインドを送信（`SesNotificationAdapter`）。
+    実宛先は `EmailRecipientResolver` で送信直前にのみ解決し、生 PII をログ・公開コードに出さない（NFR-002, ADR-AB06）。
+    ローカルは Email Block のモックで外部送信なし。デモ用の送信ログ（Mock）は `TeeNotificationAdapter` で温存。
+  - ⬜ #10 認証 / #12 リマインド(cron) / #13 ジョブ / #14 決済 / #15 フロント結線。Real-time messaging は #11 の任意分として後続。
+- **非同期ポート**: リポジトリポート／通知ポートは async（Promise）化済み。設計は `docs/design/aws-blocks-async-ports.md`。
+  通知は EventBus を同期に保ち購読側を fire-and-forget で呼ぶ（結果整合, ADR-AB06）。
 - **アプリ境界**: `aws-blocks/index.ts` に Blocks アプリの `Scope` と型付き RPC の入口を定義。
   各 Building Block（Database / Cognito / SES / Realtime / CronJob / AsyncJob）はここに足していく。
 

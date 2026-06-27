@@ -211,6 +211,18 @@ sequenceDiagram
 - **検討した代替案**: 全ポート一括 async 化を1 PR。レビュー不能。却下。
 - **トレードオフ**: 移行途中はポートごとに async/sync が混在する期間が生じる（コンテキスト単位で閉じるため実害は限定的）。
 
+### ADR-AB06: 通知の Email Block 化 — fire-and-forget 送信と PII 宛先解決の分離（#11）
+- **ステータス**: Accepted
+- **コンテキスト**: `NotificationPort.send` は同期だが Email Block(SES) は async。かつ NFR-002 によりメッセージにはマスク済み PII しか載せられない一方、SES 実送信には実アドレスが必要。本リポジトリは公開のため実アドレスへの外部送信は避けたい。
+- **決定**:
+  1. **`NotificationPort.send` を `Promise<void>` 化**。ただし EventBus は同期のまま保ち、購読側（`NotificationHandlers`）は**結果整合のため fire-and-forget**（`void send().catch()`）で呼ぶ。発火元トランザクションを送信遅延に結合させない。booking ユースケース群や `publish` 呼び出し側は無変更（#8 の非同期化と作業が被らない）。
+  2. **実宛先は `EmailRecipientResolver` ポート（通知が所有・Customer が実装供給）で送信直前にのみ解決**。`NotificationMessage` には `recipientRef: CustomerId`（非PII の論理ID, ADR-009）だけを載せ、生アドレスは SES アダプタ内部に閉じ込める。ログ・booking 層・公開コードに生 PII を出さない。生エラーは実アドレスを含み得るため、PII を除いたエラーへ整形して投げ直す。
+  3. **ローカルは Email Block のモック**（実送信なし・AWSアカウント不要）。公開リポジトリでも外部送信されない。デモ用の送信ログ（`MockNotificationAdapter`）は `TeeNotificationAdapter` で温存（SES と並列ファンアウト）。
+- **検討した代替案**:
+  - *EventBus も async 化して send を await*: 全 `publish` 呼び出し側（booking ユースケース）へ波及し #8 実装と衝突。通知は本来結果整合で await 不要。却下。
+  - *メッセージに実メールを載せる*: 「notifier に生 PII を渡さない」NFR-002 不変条件を緩める。却下。
+- **トレードオフ**: `NotificationMessage` に `recipientRef` 追加と `NotificationHandlers` の送信呼び出し変更という最小のアプリ層変更が入る（ドメイン層は無変更）。fire-and-forget のため送信失敗はログ観測（再送の堅牢化は #13 連携）。
+
 ## 8. 要件トレーサビリティ
 
 | 要件ID | 対応する設計項目 | 備考 |
@@ -221,6 +233,8 @@ sequenceDiagram
 | FR-016 | §4 UNIQUE(reservation_number)/(customer_id) | 照会・マイ予約 |
 | FR-019 | §4 (status, created_at) index, §5 `list`(async) | 管理者横断一覧 |
 | FR-032 | §4 リマインド index, §5 `confirmedStartingBetween`(async) | リマインド |
+| FR-030/031/032 | ADR-AB06, `SesNotificationAdapter` | 確定/キャンセル/リマインドの Email Block 送信（#11） |
+| NFR-002 | ADR-AB06（`EmailRecipientResolver` で宛先を一点解決, マスク済みのみログ） | 通知での生 PII 非露出 |
 | NFR-003 | ADR-AB03 | インメモリ共存（学習・テスト） |
 | NFR-006 | §1/§2, ADR-AB03, #7 `backend` シーム | DI 設定のみで切替 |
 | （ドメイン無変更） | §3 | DDD の核を保持（NFR-005 整合） |
