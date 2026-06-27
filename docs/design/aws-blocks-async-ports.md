@@ -4,7 +4,7 @@
 |---|---|
 | ステータス | Review |
 | 作成日 | 2026-06-27 |
-| 要件定義書 | docs/requirements/rental-space-booking.md（FR-010/013/019/032, NFR-003/006） |
+| 要件定義書 | docs/requirements/rental-space-booking.md（FR-010/012/013/019/032, NFR-003/006） |
 | 関連設計書 | docs/design/rental-space-booking.md（§4 永続化, ADR-002/003/009） |
 | 対象 Issue | #8〜#15 の前提設計（トラッキング #16） |
 
@@ -70,7 +70,7 @@ graph LR
 
 ```mermaid
 erDiagram
-    RESERVATIONS ||--o{ RESERVATION_SLOTS : occupies
+    RESERVATIONS ||--|{ RESERVATION_SLOTS : occupies
     RESERVATIONS {
         text id PK
         text reservation_number UK
