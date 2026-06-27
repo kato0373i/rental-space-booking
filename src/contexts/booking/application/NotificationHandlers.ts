@@ -35,9 +35,24 @@ export class NotificationHandlers {
     return this.customers.contactOf(customerId)?.maskedEmail ?? "***";
   }
 
+  /**
+   * 通知送信は外部 I/O（async）だが、ドメインイベント購読は結果整合のため fire-and-forget で呼ぶ
+   * （EventBus は同期のまま。発火元トランザクションを送信遅延に結合させない, ADR-AB06）。
+   * 送信失敗はマスク済み情報のみログに残す（NFR-002）。
+   */
+  private dispatch(message: Parameters<NotificationPort["send"]>[0]): void {
+    void this.notifier.send(message).catch((err: unknown) => {
+      console.error(
+        `[通知:${message.kind}] 送信失敗 宛先=${message.maskedRecipient} 予約=${message.reservationNumber}`,
+        err,
+      );
+    });
+  }
+
   private onConfirmed(e: ReservationConfirmed): void {
-    this.notifier.send({
+    this.dispatch({
       kind: "Confirmed",
+      recipientRef: e.customerId,
       maskedRecipient: this.maskedRecipient(e.customerId),
       reservationNumber: e.reservationNumber,
       body: `予約が確定しました。開始 ${e.startAt.toIsoJst()} / 金額 ${e.price.toString()}`,
@@ -45,8 +60,9 @@ export class NotificationHandlers {
   }
 
   private onCancelled(e: ReservationCancelled): void {
-    this.notifier.send({
+    this.dispatch({
       kind: "Cancelled",
+      recipientRef: e.customerId,
       maskedRecipient: this.maskedRecipient(e.customerId),
       reservationNumber: e.reservationNumber,
       body: `予約をキャンセルしました（${e.cancelledBy === "Admin" ? "管理者操作" : "ご本人操作"}）。キャンセル料 ${e.feeAmount.toString()} / 返金 ${e.refundAmount.toString()}`,
@@ -54,8 +70,9 @@ export class NotificationHandlers {
   }
 
   private onReminder(e: ReservationReminderDue): void {
-    this.notifier.send({
+    this.dispatch({
       kind: "Reminder",
+      recipientRef: e.customerId,
       maskedRecipient: this.maskedRecipient(e.customerId),
       reservationNumber: e.reservationNumber,
       body: `ご利用リマインド: 開始 ${e.startAt.toIsoJst()}`,

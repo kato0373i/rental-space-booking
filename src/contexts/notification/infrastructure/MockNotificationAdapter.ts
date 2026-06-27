@@ -12,7 +12,9 @@ export class MockNotificationAdapter implements NotificationPort {
 
   constructor(private readonly log = true) {}
 
-  send(message: NotificationMessage): void {
+  // 送信ログは同期的に積む（fire-and-forget 呼び出しでも publish 直後に sent() で観測できる）。
+  // ポートは async（NFR/Email Block 整合）だが、本モックは I/O を伴わないため即解決する。
+  async send(message: NotificationMessage): Promise<void> {
     this.messages.push(message);
     if (this.log) {
       // 出力にも生 PII は含めない（maskedRecipient / マスク済み body のみ）。
