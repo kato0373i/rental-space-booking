@@ -12,10 +12,10 @@ import { buildSpaceAttributes, type SpaceInput } from "./spaceFactory.js";
 export class RegisterSpace {
   constructor(private readonly spaces: SpaceRepository) {}
 
-  execute(
+  async execute(
     actor: Actor,
     input: SpaceInput,
-  ): Result<{ readonly spaceId: string }, ForbiddenError | ValidationError> {
+  ): Promise<Result<{ readonly spaceId: string }, ForbiddenError | ValidationError>> {
     const auth = requireAdmin(actor);
     if (!auth.ok) return auth;
 
@@ -26,7 +26,7 @@ export class RegisterSpace {
     const space = Space.register(attrs.value, id);
     if (!space.ok) return space;
 
-    this.spaces.save(space.value);
+    await this.spaces.save(space.value);
     return ok({ spaceId: id });
   }
 }

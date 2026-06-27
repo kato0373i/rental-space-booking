@@ -65,13 +65,13 @@ const STUDIO_B: SpaceInput = {
  * 起動時シード（NFR-003）。プロセス再起動でデータが揮発するため、起動ごとに初期化する。
  * 管理者として 1 スペースを登録し、デモ用の会員を 1 名作成する。
  */
-export function seed(container: Container): SeedResult {
-  const registered = container.registerSpace.execute(ADMIN, MEETING_ROOM_A);
+export async function seed(container: Container): Promise<SeedResult> {
+  const registered = await container.registerSpace.execute(ADMIN, MEETING_ROOM_A);
   if (!registered.ok) {
     throw new Error(`シードのスペース登録に失敗しました: ${JSON.stringify(registered.error)}`);
   }
 
-  const studio = container.registerSpace.execute(ADMIN, STUDIO_B);
+  const studio = await container.registerSpace.execute(ADMIN, STUDIO_B);
   if (!studio.ok) {
     throw new Error(`シードのスペース登録に失敗しました: ${JSON.stringify(studio.error)}`);
   }

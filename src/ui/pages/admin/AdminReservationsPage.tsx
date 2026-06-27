@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import type { PageDto, ReservationRow } from "../../../composition/webFacade.js";
+import { useEffect, useMemo, useState } from "react";
+import type { PageDto, ReservationRow, SpaceSummary } from "../../../composition/webFacade.js";
 import { useApp } from "../../app/AppContext.js";
 import { errorMessage } from "../../app/errorMessage.js";
 import { fmtDateTime, statusLabel, yen } from "../../app/format.js";
@@ -18,10 +18,21 @@ export function AdminReservationsPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const spaces = useMemo(
-    () => (session ? services.admin.listSpaces(session) : []),
-    [services, session],
-  );
+  // admin.listSpaces は非同期（DBバックエンド対応, ADR-AB01）。
+  const [spaces, setSpaces] = useState<SpaceSummary[]>([]);
+  useEffect(() => {
+    if (!session) {
+      setSpaces([]);
+      return;
+    }
+    let alive = true;
+    void services.admin.listSpaces(session).then((s) => {
+      if (alive) setSpaces(s);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [services, session]);
   const spaceName = useMemo(() => {
     const map = new Map(spaces.map((s) => [s.spaceId, s.name]));
     return (id: string) => map.get(id) ?? id;

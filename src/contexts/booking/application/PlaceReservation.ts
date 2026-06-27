@@ -58,7 +58,7 @@ export class PlaceReservation {
   ): Promise<Result<PlaceReservationResult, PlaceReservationError>> {
     const now = this.clock.now();
 
-    const catalog = this.catalog.getCatalog(input.spaceId);
+    const catalog = await this.catalog.getCatalog(input.spaceId);
     if (!catalog.ok) return catalog;
 
     // 連続スロット群を構築（連続性検証, FR-014①）。
@@ -79,7 +79,7 @@ export class PlaceReservation {
     if (!validated.ok) return validated;
 
     // 確定金額（FR-011）。
-    const quote = this.catalog.quote(input.spaceId, input.slotStarts);
+    const quote = await this.catalog.quote(input.spaceId, input.slotStarts);
     if (!quote.ok) return quote;
 
     // キャンセルポリシーを確定時スナップショットとして写像（ADR-006）。

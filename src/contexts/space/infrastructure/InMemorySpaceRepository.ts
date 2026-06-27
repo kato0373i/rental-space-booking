@@ -6,15 +6,15 @@ import type { SpaceRepository } from "../domain/ports/SpaceRepository.js";
 export class InMemorySpaceRepository implements SpaceRepository {
   private readonly store = new Map<string, Space>();
 
-  save(space: Space): void {
+  async save(space: Space): Promise<void> {
     this.store.set(space.id, space);
   }
 
-  byId(id: SpaceId): Space | undefined {
+  async byId(id: SpaceId): Promise<Space | undefined> {
     return this.store.get(id);
   }
 
-  all(): Space[] {
+  async all(): Promise<Space[]> {
     return [...this.store.values()];
   }
 }

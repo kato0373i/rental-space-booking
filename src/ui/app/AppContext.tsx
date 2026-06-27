@@ -1,4 +1,4 @@
-import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { createWebApp, type AppServices, type SessionUser } from "../../composition/webFacade.js";
 
 /** 予約導線でページ間に持ち回る選択内容。 */
@@ -35,12 +35,28 @@ type AppContextValue = {
 const AppContext = createContext<AppContextValue | null>(null);
 
 export function AppProvider({ children }: { readonly children: ReactNode }) {
-  // ページロードごとに1コンテナ（インメモリ・シード）。リロードで揮発（NFR-F03）。
-  const services = useMemo(() => createWebApp(), []);
+  // ページロードごとに1コンテナ（シード）。リロードで揮発（NFR-F03）。
+  // createWebApp は非同期（DBバックエンドの初期化に対応, ADR-AB01）になったため、
+  // 準備完了までは services を null として読み込み表示にする。
+  const [services, setServices] = useState<AppServices | null>(null);
   const [session, setSession] = useState<SessionUser | null>(null);
   const [draft, setDraft] = useState<BookingDraft | null>(null);
   const [lastReservation, setLastReservation] = useState<LastReservation | null>(null);
   const [tick, setTick] = useState(0);
+
+  useEffect(() => {
+    let alive = true;
+    void createWebApp().then((s) => {
+      if (alive) setServices(s);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  if (!services) {
+    return <div className="banner">読み込み中…</div>;
+  }
 
   const value: AppContextValue = {
     services,

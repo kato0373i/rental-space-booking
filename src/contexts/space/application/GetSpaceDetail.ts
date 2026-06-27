@@ -37,8 +37,8 @@ export type SpaceDetail = {
 export class GetSpaceDetail {
   constructor(private readonly spaces: SpaceRepository) {}
 
-  execute(spaceId: SpaceId): Result<SpaceDetail, NotFound> {
-    const space = this.spaces.byId(spaceId);
+  async execute(spaceId: SpaceId): Promise<Result<SpaceDetail, NotFound>> {
+    const space = await this.spaces.byId(spaceId);
     if (!space) return err(notFound("スペースが見つかりません"));
 
     const { openMinute, closeMinute } = space.businessHours;

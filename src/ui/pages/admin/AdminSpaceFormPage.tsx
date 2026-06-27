@@ -68,26 +68,33 @@ export function AdminSpaceFormPage() {
 
   useEffect(() => {
     if (!isEdit || !session || spaceId === undefined) return;
-    const r = services.admin.getSpaceDetail(session, spaceId);
-    if (!r.ok) {
-      setLoadError(errorMessage(r.error));
-      return;
-    }
-    const d = r.value;
-    setForm({
-      name: d.name,
-      capacity: d.capacity,
-      openHour: d.openHour,
-      openMinute: d.openMinute,
-      closeHour: d.closeHour,
-      closeMinute: d.closeMinute,
-      slotMinutes: d.slotMinutes,
-      minSlots: d.minSlots,
-      maxSlots: d.maxSlots,
-      bookableHorizonDays: d.bookableHorizonDays,
-      rateRules: d.rateRules.map((r2) => ({ ...r2 })),
-      cancellationTiers: d.cancellationTiers.map((t) => ({ ...t })),
+    let alive = true;
+    // getSpaceDetail は非同期（DBバックエンド対応, ADR-AB01）。
+    void services.admin.getSpaceDetail(session, spaceId).then((r) => {
+      if (!alive) return;
+      if (!r.ok) {
+        setLoadError(errorMessage(r.error));
+        return;
+      }
+      const d = r.value;
+      setForm({
+        name: d.name,
+        capacity: d.capacity,
+        openHour: d.openHour,
+        openMinute: d.openMinute,
+        closeHour: d.closeHour,
+        closeMinute: d.closeMinute,
+        slotMinutes: d.slotMinutes,
+        minSlots: d.minSlots,
+        maxSlots: d.maxSlots,
+        bookableHorizonDays: d.bookableHorizonDays,
+        rateRules: d.rateRules.map((r2) => ({ ...r2 })),
+        cancellationTiers: d.cancellationTiers.map((t) => ({ ...t })),
+      });
     });
+    return () => {
+      alive = false;
+    };
   }, [isEdit, session, spaceId, services]);
 
   if (!session) return null;
@@ -109,14 +116,14 @@ export function AdminSpaceFormPage() {
   const removeTier = (i: number) =>
     setForm((f) => ({ ...f, cancellationTiers: f.cancellationTiers.filter((_, idx) => idx !== i) }));
 
-  const submit = () => {
+  const submit = async () => {
     setError(null);
     setDetails([]);
     const payload: AdminSpaceFormInput = form;
     const r =
       isEdit && spaceId !== undefined
-        ? services.admin.editSpace(session, spaceId, payload)
-        : services.admin.registerSpace(session, payload);
+        ? await services.admin.editSpace(session, spaceId, payload)
+        : await services.admin.registerSpace(session, payload);
     if (r.ok) {
       navigate("/admin/spaces");
     } else {

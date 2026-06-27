@@ -17,14 +17,14 @@ export type EditSpaceInput = SpaceInput & { readonly spaceId: SpaceId };
 export class EditSpace {
   constructor(private readonly spaces: SpaceRepository) {}
 
-  execute(
+  async execute(
     actor: Actor,
     input: EditSpaceInput,
-  ): Result<void, ForbiddenError | NotFound | ValidationError> {
+  ): Promise<Result<void, ForbiddenError | NotFound | ValidationError>> {
     const auth = requireAdmin(actor);
     if (!auth.ok) return auth;
 
-    const space = this.spaces.byId(input.spaceId);
+    const space = await this.spaces.byId(input.spaceId);
     if (!space) return err(notFound("スペースが見つかりません"));
 
     const attrs = buildSpaceAttributes(input);
@@ -33,7 +33,7 @@ export class EditSpace {
     const edited = space.edit(attrs.value);
     if (!edited.ok) return edited;
 
-    this.spaces.save(space);
+    await this.spaces.save(space);
     return ok(undefined);
   }
 }

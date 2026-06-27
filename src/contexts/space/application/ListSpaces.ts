@@ -27,9 +27,9 @@ const hhmm = (minuteOfDay: number): string => {
 export class ListSpaces {
   constructor(private readonly spaces: SpaceRepository) {}
 
-  execute(includeSuspended = false): SpaceSummary[] {
-    return this.spaces
-      .all()
+  async execute(includeSuspended = false): Promise<SpaceSummary[]> {
+    const spaces = await this.spaces.all();
+    return spaces
       .filter((s) => includeSuspended || s.isPublished())
       .map((s) => ({
         spaceId: s.id,

@@ -16,9 +16,9 @@ let spaceId: SpaceId;
 let memberId: CustomerId;
 let adminId: CustomerId;
 
-beforeEach(() => {
+beforeEach(async () => {
   app = createContainer({ clock: new FixedClock(NOW), silentNotifications: true });
-  const s = seed(app);
+  const s = await seed(app);
   spaceId = s.spaceId;
   memberId = s.memberId;
   adminId = s.adminId;
@@ -46,16 +46,16 @@ describe("管理者ログイン（B-1, FR-042）", () => {
 });
 
 describe("スペース一覧/詳細（B-2/B-3, FR-AD03/AD04）", () => {
-  it("includeSuspended で公開停止も含む", () => {
-    app.suspendSpace.execute(ADMIN, { spaceId });
-    expect(app.listSpaces.execute().length).toBe(1); // 公開中のみ
-    const all = app.listSpaces.execute(true);
+  it("includeSuspended で公開停止も含む", async () => {
+    await app.suspendSpace.execute(ADMIN, { spaceId });
+    expect((await app.listSpaces.execute()).length).toBe(1); // 公開中のみ
+    const all = await app.listSpaces.execute(true);
     expect(all.length).toBe(2);
     expect(all.find((s) => s.spaceId === spaceId)?.publishState).toBe("Suspended");
   });
 
-  it("GetSpaceDetail が全設定を返す", () => {
-    const r = app.getSpaceDetail.execute(spaceId);
+  it("GetSpaceDetail が全設定を返す", async () => {
+    const r = await app.getSpaceDetail.execute(spaceId);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.value.rateRules.length).toBe(3);

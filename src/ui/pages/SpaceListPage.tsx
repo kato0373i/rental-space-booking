@@ -1,10 +1,22 @@
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import type { SpaceSummary } from "../../composition/webFacade.js";
 import { useApp } from "../app/AppContext.js";
 
 /** スペース一覧（FR-F01）。 */
 export function SpaceListPage() {
   const { services } = useApp();
-  const spaces = services.listSpaces();
+  // listSpaces は非同期（DBバックエンド対応, ADR-AB01）。
+  const [spaces, setSpaces] = useState<SpaceSummary[]>([]);
+  useEffect(() => {
+    let alive = true;
+    void services.listSpaces().then((s) => {
+      if (alive) setSpaces(s);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [services]);
 
   return (
     <section>

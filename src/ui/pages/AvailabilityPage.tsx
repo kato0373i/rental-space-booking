@@ -1,6 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import type { DayAvailabilityDto } from "../../composition/webFacade.js";
+import type { DayAvailabilityDto, SpaceSummary } from "../../composition/webFacade.js";
 import { useApp } from "../app/AppContext.js";
 import { errorMessage } from "../app/errorMessage.js";
 import { fmtEpochJst, yen } from "../app/format.js";
@@ -22,10 +22,20 @@ export function AvailabilityPage() {
   const { services, setDraft } = useApp();
   const navigate = useNavigate();
 
-  const space = useMemo(
-    () => services.listSpaces().find((s) => s.spaceId === spaceId),
-    [services, spaceId],
-  );
+  // listSpaces は非同期（DBバックエンド対応, ADR-AB01）。state + effect で取得する。
+  const [space, setSpace] = useState<SpaceSummary | undefined>(undefined);
+  const [spaceLoaded, setSpaceLoaded] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    void services.listSpaces().then((spaces) => {
+      if (!alive) return;
+      setSpace(spaces.find((s) => s.spaceId === spaceId));
+      setSpaceLoaded(true);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [services, spaceId]);
 
   const today = toIsoDate(new Date());
   const [fromDay, setFromDay] = useState(today);
@@ -51,12 +61,24 @@ export function AvailabilityPage() {
     return epochs;
   }, [selectedStart, count, days, slotMs]);
 
-  const quote = useMemo(() => {
-    if (!consecutive || !spaceId) return null;
-    const r = services.quote(spaceId, consecutive);
-    return r.ok ? r.value : null;
+  const [quote, setQuote] = useState<number | null>(null);
+  useEffect(() => {
+    if (!consecutive || !spaceId) {
+      setQuote(null);
+      return;
+    }
+    let alive = true;
+    void services.quote(spaceId, consecutive).then((r) => {
+      if (alive) setQuote(r.ok ? r.value : null);
+    });
+    return () => {
+      alive = false;
+    };
   }, [consecutive, services, spaceId]);
 
+  if (spaceId && !spaceLoaded) {
+    return <p className="muted">読み込み中…</p>;
+  }
   if (!spaceId || !space) {
     return <p className="banner error">スペースが見つかりません。</p>;
   }
