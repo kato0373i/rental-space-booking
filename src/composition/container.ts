@@ -18,6 +18,7 @@ import { PlaceReservation } from "../contexts/booking/application/PlaceReservati
 import { QuoteReservation } from "../contexts/booking/application/QuoteReservation.js";
 import { SearchAvailability } from "../contexts/booking/application/SearchAvailability.js";
 import { TriggerReminders } from "../contexts/booking/application/TriggerReminders.js";
+import { SettleReservationPayment } from "../contexts/booking/application/SettleReservationPayment.js";
 import type { CustomerDirectoryPort } from "../contexts/booking/application/ports/CustomerDirectoryPort.js";
 import type { SpaceCatalogPort } from "../contexts/booking/application/ports/SpaceCatalogPort.js";
 import { InMemoryReservationRepository } from "../contexts/booking/infrastructure/InMemoryReservationRepository.js";
@@ -59,6 +60,11 @@ import { SesNotificationAdapter } from "../contexts/notification/infrastructure/
 import { TeeNotificationAdapter } from "../contexts/notification/infrastructure/TeeNotificationAdapter.js";
 import { CustomerEmailResolver } from "../contexts/customer/application/CustomerEmailResolver.js";
 import { MockPaymentAdapter } from "../contexts/payment/infrastructure/MockPaymentAdapter.js";
+import {
+  StripePaymentAdapter,
+  type StripeGateway,
+} from "../contexts/payment/infrastructure/StripePaymentAdapter.js";
+import type { PaymentPort } from "../contexts/booking/application/ports/PaymentPort.js";
 
 export type Container = {
   readonly clock: Clock;
@@ -83,6 +89,8 @@ export type Container = {
   readonly markNoShow: MarkNoShow;
   readonly listAllReservations: ListAllReservations;
   readonly triggerReminders: TriggerReminders;
+  /** 決済決着（Webhook→Background jobs）の予約反映（#14, ADR-AB10）。冪等。 */
+  readonly settleReservationPayment: SettleReservationPayment;
   // Space ユースケース
   readonly registerSpace: RegisterSpace;
   readonly editSpace: EditSpace;
@@ -109,6 +117,12 @@ export type ContainerOptions = {
   readonly silentNotifications?: boolean;
   /** 実装系統の選択（既定 "memory"）。AWS Blocks 版は段階移行中。 */
   readonly backend?: AppBackend;
+  /**
+   * 外部決済プロバイダ（Stripe）ゲートウェイ（#14, ADR-AB10）。指定時は決済を {@link StripePaymentAdapter}
+   * 経由で行う（実決済）。未指定なら従来どおりモック決済（デモ・テスト用に温存）。
+   * AWS Blocks に決済 Block は無いため backend とは独立し、デプロイ時に実 Stripe SDK の実装を注入する。
+   */
+  readonly paymentGateway?: StripeGateway;
 };
 
 /**
@@ -144,8 +158,12 @@ export function createContainer(options: ContainerOptions = {}): Container {
     ? new BlocksReminderLog(blocksDb)
     : new InMemoryReminderLog();
 
-  // 汎用サブドメイン（モックアダプタ）
+  // 汎用サブドメイン（モックアダプタ）。payment はデモ/テスト用の introspection（setBehavior 等）を
+  // 維持するため常に Mock を公開し、実決済の経路だけ paymentGateway 指定時に Stripe 実装へ差し替える（#14）。
   const payment = new MockPaymentAdapter();
+  const paymentPort: PaymentPort = options.paymentGateway
+    ? new StripePaymentAdapter(options.paymentGateway)
+    : payment;
   const notifier = new MockNotificationAdapter(!options.silentNotifications);
 
   // Booking ポートの実装供給（依存性逆転）
@@ -191,14 +209,15 @@ export function createContainer(options: ContainerOptions = {}): Container {
     reservations,
     searchAvailability: new SearchAvailability(catalog, reservations),
     quoteReservation: new QuoteReservation(catalog),
-    placeReservation: new PlaceReservation(catalog, directory, reservations, payment, bus, clock),
-    cancelReservation: new CancelReservation(reservations, payment, bus, clock, directory),
+    placeReservation: new PlaceReservation(catalog, directory, reservations, paymentPort, bus, clock),
+    cancelReservation: new CancelReservation(reservations, paymentPort, bus, clock, directory),
     lookupReservation: new LookupReservation(reservations, directory, clock),
     listMyReservations: new ListMyReservations(reservations, clock),
-    forceCancelReservation: new ForceCancelReservation(reservations, payment, bus, clock),
+    forceCancelReservation: new ForceCancelReservation(reservations, paymentPort, bus, clock),
     markNoShow: new MarkNoShow(reservations, clock),
     listAllReservations: new ListAllReservations(reservations, clock),
     triggerReminders: new TriggerReminders(reservations, bus, reminderLog),
+    settleReservationPayment: new SettleReservationPayment(reservations, bus, clock),
     registerSpace: new RegisterSpace(spaces),
     editSpace: new EditSpace(spaces),
     suspendSpace: new SuspendSpace(spaces),

@@ -265,6 +265,20 @@ sequenceDiagram
   - *ハンドラごとに個別ジョブへ分割*: 1ハンドラ失敗時の他ハンドラへの巻き込みを避けられるが、現状 type ごとに購読は1つ（`NotificationHandlers`）のため過剰。type 単位ディスパッチ＋冪等で十分。将来の購読増時に再検討（§9）。
 - **トレードオフ**: at-least-once により重複配信があり得る（冪等で吸収）。AsyncJob のワーカー実起動は実行エントリ（composition ルート/デプロイ）で駆動し、Preview 段階の実デプロイ採否は別途（§9 #3）。
 
+### ADR-AB10: 決済フローの本番化 — 外部プロバイダ(Stripe)アダプタ＋Webhook×Background jobs 決着（#14）
+- **ステータス**: Accepted
+- **コンテキスト**: 「決済成功で予約確定」がコア決定。現状は `MockPaymentAdapter` の `Succeed/Fail/Timeout` 切替デモ。**AWS Blocks に決済 Block は存在しない**（決済は Stripe 等の外部 SaaS）ため、本件は「Block への置換」ではなく**外部決済アダプタ＋Background jobs オーケストレーション**になる。
+- **決定**:
+  1. **`PaymentPort` の外部プロバイダ実装 `StripePaymentAdapter` を追加**。具体 SDK に結合せず最小面 `StripeGateway`（`createCharge`/`createRefund`）越しに使い、テストは fake 注入（SES/Cognito と同方針）。同期与信は既存の `PlaceReservation` Saga から呼ばれ「決済成功で確定／失敗・タイムアウトで中断」をそのまま満たす（PlaceReservation 無変更）。冪等キー＝予約ID（FR-020）。
+  2. **非同期/取りこぼしの決着は Webhook × Background jobs で後追い**。`StripeWebhookProcessor` が署名検証→決済決着（`PaymentSettlement`）へ正規化→`AsyncJob` 投入し、ワーカーが `SettleReservationPayment`（**冪等**）で予約へ反映する。`SettleReservationPayment` は Pending のみ遷移させ、既決着（同期確定・Webhook 再送）は no-op で吸収する。主用途は「同期与信は成功したが確定保存直後に Webhook も届く」等の重複到達の安全な吸収。
+     - **timeout の扱い（重要）**: 同期与信が timeout した場合、`PlaceReservation` は即 `abort`（Aborted）して占有を解放する（後勝ちで他者の予約を奪わない安全側）。このため後から success Webhook が届いても予約は非 Pending（Aborted）で **no-op となり Confirmed には収束しない**（解放済みスロットを勝手に再確定しない）。timeout 後にプロバイダ側で課金が実成立していた場合は**返金等の手当てを別途要する**（timeout ポリシー固有の既知トレードオフ。自動返金の堅牢化は §9 後続）。
+  3. **モック決済はデモ/ローカルで温存**。`createContainer` は既定で `MockPaymentAdapter`（`setBehavior` 等の introspection を公開）。`paymentGateway` 指定時のみ Saga 経路を Stripe 実装へ差し替える（backend とは独立。決済 Block が無いため）。
+  4. **NFR-002**: 予約突合は metadata の `reservationId`（非PII 論理ID）のみ。カード等の生決済情報はアダプタにも保持しない（プロバイダ側トークン）。Webhook 署名検証失敗時は生エラーを載せず固定文言を返す。
+- **検討した代替案**:
+  - *同期与信のみで Webhook を持たない*: timeout 後の実成立や非同期決済手段に追従できず予約が不整合になる。却下。
+  - *PlaceReservation を完全 Webhook 駆動（Pending のまま即返し）に作り替え*: コア決定「決済成功で確定」の同期 Saga を壊し変更が大きい。同期与信＋Webhook 後追い（冪等）の併用で十分。却下。
+- **トレードオフ**: 同期確定と Webhook 決着の二重適用可能性を `SettleReservationPayment` の冪等（status 検査）で吸収する。実 Stripe SDK の `StripeGateway`/`StripeWebhookVerifier` 実装と実認証情報はデプロイ時に注入（Preview 段階の実デプロイ採否は §9 #3）。
+
 ## 8. 要件トレーサビリティ
 
 | 要件ID | 対応する設計項目 | 備考 |
@@ -279,6 +293,7 @@ sequenceDiagram
 | FR-040/042 | ADR-AB07, `AuthGateway`/`CognitoAuthGateway` | 会員登録・ログイン・ロール（Member/Admin）を Authentication Block 化（#10） |
 | FR-032 / U-03 | ADR-AB08, `CronJob`/`runReminderCycle`/`ReminderLog` | 利用24h前リマインドの自動定期実行・二重送信防止（#12） |
 | FR-030/031/032 | ADR-AB09, `BlocksEventBus`(`AsyncJob`) | ドメインイベント配信の非同期化・リトライ/DLQ（#13） |
+| FR-012/020/021 | ADR-AB10, `StripePaymentAdapter`/`StripeWebhookProcessor`/`SettleReservationPayment` | 決済の外部プロバイダ化・Webhook×Background jobs 決着・冪等（#14） |
 | NFR-002 | ADR-AB06（`EmailRecipientResolver` で宛先を一点解決, マスク済みのみログ）／ADR-AB07（資格情報は Cognito, PII プロフィールはリポジトリ） | 通知での生 PII 非露出・資格情報の自前保持回避 |
 | NFR-003 | ADR-AB03 | インメモリ共存（学習・テスト） |
 | NFR-006 | §1/§2, ADR-AB03, #7 `backend` シーム | DI 設定のみで切替 |
@@ -302,3 +317,4 @@ sequenceDiagram
 | 2026-06-28 | ADR-AB07 追記（#10 認証の Authentication Block(Cognito) 化。資格情報=Block／プロフィール=リポジトリ、ロール=`custom:role` 属性、Customer 関連ポートの async 化） | desartslab-kato |
 | 2026-06-28 | ADR-AB08 追記（#12 リマインドの Scheduled tasks Block(cron) 化。`runReminderCycle` 抽出と `ReminderLog` 冪等ログによる二重送信防止） | desartslab-kato |
 | 2026-06-28 | ADR-AB09 追記（#13 ドメインイベント配信の Background jobs Block(AsyncJob) 化。非同期ワーカー＋リトライ/DLQ、`EventHandler` の Promise 化、`NotificationHandlers` の失敗伝播化） | desartslab-kato |
+| 2026-06-28 | ADR-AB10 追記（#14 決済フロー本番化。外部プロバイダ(Stripe)アダプタ＋Webhook×Background jobs 決着、`SettleReservationPayment` の冪等反映。決済 Block は無し・モックは温存） | desartslab-kato |
