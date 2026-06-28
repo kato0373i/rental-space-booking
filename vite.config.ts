@@ -8,5 +8,8 @@ import { defineConfig } from "vite";
 export default defineConfig({
   plugins: [react()],
   server: { open: false },
-  build: { rollupOptions: { external: ["aws-blocks"] } },
+  // AWS Blocks 配線（blocksWiring）は blocks 経路でのみ動的 import され、既定 memory バンドルには含めない。
+  // そのチャンクが参照する Node 専用依存（@aws-blocks/*, node:*）と型安全クライアント "aws-blocks" は
+  // ブラウザビルドで外部依存として扱う（解決は dev:blocks / デプロイのランタイムが供給, #6/ADR-AB11）。
+  build: { rollupOptions: { external: ["aws-blocks", /^@aws-blocks\//, /^node:/] } },
 });

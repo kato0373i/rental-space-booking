@@ -1,10 +1,6 @@
-import { fileURLToPath } from "node:url";
-import { Scope } from "@aws-blocks/core";
-import { Database, EmailClient } from "@aws-blocks/blocks";
 import type { Clock } from "../shared/domain/Clock.js";
 import { SystemClock } from "../shared/domain/Clock.js";
 import { InMemoryEventBus, type EventBus } from "../shared/domain/EventBus.js";
-import { BlocksEventBus } from "../shared/infrastructure/BlocksEventBus.js";
 
 // Booking
 import { CancelReservation } from "../contexts/booking/application/CancelReservation.js";
@@ -22,14 +18,9 @@ import { SettleReservationPayment } from "../contexts/booking/application/Settle
 import type { CustomerDirectoryPort } from "../contexts/booking/application/ports/CustomerDirectoryPort.js";
 import type { SpaceCatalogPort } from "../contexts/booking/application/ports/SpaceCatalogPort.js";
 import { InMemoryReservationRepository } from "../contexts/booking/infrastructure/InMemoryReservationRepository.js";
-import {
-  BlocksReservationRepository,
-  type SqlDatabase,
-} from "../contexts/booking/infrastructure/BlocksReservationRepository.js";
 import type { ReservationRepository } from "../contexts/booking/domain/ports/ReservationRepository.js";
 import type { ReminderLog } from "../contexts/booking/application/ports/ReminderLog.js";
 import { InMemoryReminderLog } from "../contexts/booking/infrastructure/InMemoryReminderLog.js";
-import { BlocksReminderLog } from "../contexts/booking/infrastructure/BlocksReminderLog.js";
 
 // Space
 import { EditSpace } from "../contexts/space/application/EditSpace.js";
@@ -40,7 +31,6 @@ import { ResumeSpace } from "../contexts/space/application/ResumeSpace.js";
 import { SpaceCatalogQueryService } from "../contexts/space/application/SpaceCatalogQueryService.js";
 import { SuspendSpace } from "../contexts/space/application/SuspendSpace.js";
 import { InMemorySpaceRepository } from "../contexts/space/infrastructure/InMemorySpaceRepository.js";
-import { BlocksSpaceRepository } from "../contexts/space/infrastructure/BlocksSpaceRepository.js";
 import type { SpaceRepository } from "../contexts/space/domain/ports/SpaceRepository.js";
 
 // Customer
@@ -50,21 +40,34 @@ import { RegisterMember } from "../contexts/customer/application/RegisterMember.
 import type { AuthGateway } from "../contexts/customer/application/ports/AuthGateway.js";
 import { InMemoryCustomerRepository } from "../contexts/customer/infrastructure/InMemoryCustomerRepository.js";
 import { InMemoryAuthGateway } from "../contexts/customer/infrastructure/InMemoryAuthGateway.js";
-import { CognitoAuthGateway } from "../contexts/customer/infrastructure/CognitoAuthGateway.js";
-import { AuthCognitoClient } from "../contexts/customer/infrastructure/AuthCognitoClient.js";
 
 // Payment / Notification
 import type { NotificationPort } from "../contexts/booking/application/ports/NotificationPort.js";
 import { MockNotificationAdapter } from "../contexts/notification/infrastructure/MockNotificationAdapter.js";
-import { SesNotificationAdapter } from "../contexts/notification/infrastructure/SesNotificationAdapter.js";
-import { TeeNotificationAdapter } from "../contexts/notification/infrastructure/TeeNotificationAdapter.js";
-import { CustomerEmailResolver } from "../contexts/customer/application/CustomerEmailResolver.js";
 import { MockPaymentAdapter } from "../contexts/payment/infrastructure/MockPaymentAdapter.js";
 import {
   StripePaymentAdapter,
   type StripeGateway,
 } from "../contexts/payment/infrastructure/StripePaymentAdapter.js";
 import type { PaymentPort } from "../contexts/booking/application/ports/PaymentPort.js";
+
+/**
+ * backend に応じて差し替わるインフラ一式（リポジトリ/イベントバス/認証/通知, ADR-AB03）。
+ * memory は本ファイルでインライン構築、blocks は `blocksWiring.buildBlocksInfra` が構築して注入する
+ * （`@aws-blocks/*`=Node 専用 をブラウザバンドルから隔離するため, #6 / ADR-AB11）。
+ */
+export type BackendInfra = {
+  readonly bus: EventBus;
+  readonly spaces: SpaceRepository;
+  readonly reservations: ReservationRepository;
+  readonly reminderLog: ReminderLog;
+  readonly customers: InMemoryCustomerRepository;
+  readonly auth: AuthGateway;
+  /** デモ/テスト用 introspection（sent/clear）を保持するモック通知。常に公開する。 */
+  readonly notifier: MockNotificationAdapter;
+  /** 実際の購読先（memory=Mock のみ / blocks=SES＋Mock の Tee）。 */
+  readonly notifyPort: NotificationPort;
+};
 
 export type Container = {
   readonly clock: Clock;
@@ -107,7 +110,7 @@ export type Container = {
 /**
  * リポジトリ/アダプタの実装系統。
  * - "memory": 既存のインメモリ/モック実装（既定。テスト・学習・デモ用）。
- * - "blocks": AWS Blocks ベースの実装。各コンテキストを Issue #8 以降で順次移行する。
+ * - "blocks": AWS Blocks ベースの実装（`blocksInfra` を注入）。
  */
 export type AppBackend = "memory" | "blocks";
 
@@ -120,49 +123,53 @@ export type ContainerOptions = {
   /**
    * 外部決済プロバイダ（Stripe）ゲートウェイ（#14, ADR-AB10）。指定時は決済を {@link StripePaymentAdapter}
    * 経由で行う（実決済）。未指定なら従来どおりモック決済（デモ・テスト用に温存）。
-   * AWS Blocks に決済 Block は無いため backend とは独立し、デプロイ時に実 Stripe SDK の実装を注入する。
    */
   readonly paymentGateway?: StripeGateway;
   /**
    * blocks バックエンドの AWS Blocks リソース境界名（既定 "rental-space-booking"）。
-   * テストで一意名を与えると Database/Cognito/EventBus/Email を丸ごと隔離できる（#15）。
+   * `createWebApp({ backend: "blocks" })` が `buildBlocksInfra` へ渡す。テストで一意名を与えると隔離できる。
    */
   readonly blocksScopeId?: string;
+  /**
+   * blocks バックエンドのインフラ一式（`blocksWiring.buildBlocksInfra` 製）。`backend: "blocks"` で必須。
+   * `@aws-blocks/*` をブラウザバンドルから隔離するため、構築は本ファイル外（動的 import）で行う（#6）。
+   */
+  readonly blocksInfra?: BackendInfra;
 };
 
+/** memory バックエンドの backend 依存インフラをインライン構築する（`@aws-blocks/*` 非依存）。 */
+function buildMemoryInfra(silentNotifications: boolean): BackendInfra {
+  const customers = new InMemoryCustomerRepository();
+  const notifier = new MockNotificationAdapter(!silentNotifications);
+  return {
+    bus: new InMemoryEventBus(),
+    spaces: new InMemorySpaceRepository(),
+    reservations: new InMemoryReservationRepository(),
+    reminderLog: new InMemoryReminderLog(),
+    customers,
+    auth: new InMemoryAuthGateway(customers),
+    notifier,
+    notifyPort: notifier,
+  };
+}
+
 /**
- * 合成ルート（DI）。ポート↔実装の束ね（インメモリ/RDS・Blocks 切替点, NFR-006）。
- * 別のリポジトリ実装（AWS Blocks 等）へ差し替える場合、ここの new を差し替えるだけでよい。
+ * 合成ルート（DI）。ポート↔実装の束ね（NFR-006）。
  *
- * `backend: "blocks"` は予約コンテキスト（#8）を AWS Blocks Database 実装に切り替える。
- * スペース/顧客は #9/#10 まではインメモリのまま（移行途中の混在を許容, ADR-AB05）。
+ * memory（既定）は本ファイルでインライン構築し `@aws-blocks/*` に一切依存しない（ブラウザSPAで安全, #6）。
+ * blocks は `options.blocksInfra`（`buildBlocksInfra` 製）を注入する。`createWebApp({ backend: "blocks" })`
+ * が動的 import で構築・注入するため、通常は本関数を直接 blocks で呼ぶ必要はない。
  */
 export function createContainer(options: ContainerOptions = {}): Container {
   const backend: AppBackend = options.backend ?? "memory";
-  const scopeId = options.blocksScopeId ?? "rental-space-booking";
-
   const clock: Clock = options.clock ?? new SystemClock();
-  // イベントバス（#13）。blocks は Background jobs Block（AsyncJob）で非同期＋リトライ/DLQ、
-  // memory はプロセス内 fire-and-forget（ADR-AB09）。ポート（publish/subscribe）は共通。
-  const bus: EventBus =
-    backend === "blocks"
-      ? new BlocksEventBus(new Scope(scopeId))
-      : new InMemoryEventBus();
 
-  // リポジトリ。予約・スペースは backend で切替（#8/#9）。顧客は順次移行（#10）。
-  // blocks では 1 つの Database を予約・スペースで共有する（マイグレーションは初回クエリ時に一括適用）。
-  const blocksDb = backend === "blocks" ? createBlocksDb(scopeId) : undefined;
-  const spaces: SpaceRepository = blocksDb
-    ? new BlocksSpaceRepository(blocksDb)
-    : new InMemorySpaceRepository();
-  const customers = new InMemoryCustomerRepository();
-  const reservations: ReservationRepository = blocksDb
-    ? new BlocksReservationRepository(blocksDb)
-    : new InMemoryReservationRepository();
-  // リマインド冪等ログ（#12）。blocks は予約と同じ Database を共有する。
-  const reminderLog: ReminderLog = blocksDb
-    ? new BlocksReminderLog(blocksDb)
-    : new InMemoryReminderLog();
+  const infra: BackendInfra =
+    backend === "blocks"
+      ? requireBlocksInfra(options.blocksInfra)
+      : buildMemoryInfra(options.silentNotifications ?? false);
+
+  const { bus, spaces, reservations, reminderLog, customers, auth, notifier, notifyPort } = infra;
 
   // 汎用サブドメイン（モックアダプタ）。payment はデモ/テスト用の introspection（setBehavior 等）を
   // 維持するため常に Mock を公開し、実決済の経路だけ paymentGateway 指定時に Stripe 実装へ差し替える（#14）。
@@ -170,38 +177,13 @@ export function createContainer(options: ContainerOptions = {}): Container {
   const paymentPort: PaymentPort = options.paymentGateway
     ? new StripePaymentAdapter(options.paymentGateway)
     : payment;
-  const notifier = new MockNotificationAdapter(!options.silentNotifications);
 
   // Booking ポートの実装供給（依存性逆転）
   const catalog: SpaceCatalogPort = new SpaceCatalogQueryService(spaces);
   const directory: CustomerDirectoryPort = new CustomerDirectoryService(customers);
 
   // 通知購読（Booking → Notification, 結果整合）。
-  // blocks では SES（Email Block）へ実送信しつつ、デモ用の送信ログ（notifier=Mock）も温存する（#11）。
-  // memory では従来どおり Mock のみ。notifier 自体は常に Mock 型で公開し、introspection（sent/clear）を維持。
-  const notifyPort: NotificationPort =
-    backend === "blocks"
-      ? new TeeNotificationAdapter([
-          new SesNotificationAdapter(
-            // ローカルは Email Block のモック（外部送信なし）。実送信切替時は
-            // SES で検証済みの送信元アドレスへ差し替える（#15 / デプロイ時 TODO）。
-            new EmailClient(new Scope(scopeId), "notifications", {
-              fromAddress: "noreply@example.com",
-            }),
-            new CustomerEmailResolver(customers),
-          ),
-          notifier,
-        ])
-      : notifier;
   new NotificationHandlers(notifyPort, directory).register(bus);
-
-  // 認証ゲートウェイ（ADR-AB07/AB03）。blocks では Authentication Block(Cognito) 実装、
-  // memory では既存ドメイン（Customer.authenticate / Credential）を用いるインメモリ実装。
-  // ローカルの Cognito は Block のモック（実 AWS 不要・外部 I/O なし）として動作する。
-  const auth: AuthGateway =
-    backend === "blocks"
-      ? new CognitoAuthGateway(new AuthCognitoClient(new Scope(scopeId), "auth"))
-      : new InMemoryAuthGateway(customers);
 
   return {
     clock,
@@ -235,13 +217,12 @@ export function createContainer(options: ContainerOptions = {}): Container {
   };
 }
 
-/**
- * AWS Blocks Database を構築する（#8/#9）。予約・スペースのリポジトリで共有する。
- * ローカルは PGlite（`.bb-data/` に永続化, AWSアカウント不要）、デプロイ時は Aurora。
- * マイグレーションは初回クエリ時に `aws-blocks/migrations` から一括適用される。
- */
-function createBlocksDb(scopeId: string): SqlDatabase {
-  const migrationsPath = fileURLToPath(new URL("../../aws-blocks/migrations", import.meta.url));
-  const db = new Database(new Scope(scopeId), "main", { migrationsPath });
-  return db as unknown as SqlDatabase;
+function requireBlocksInfra(infra: BackendInfra | undefined): BackendInfra {
+  if (!infra) {
+    throw new Error(
+      'backend: "blocks" には blocksInfra が必要です。' +
+        "createWebApp({ backend: \"blocks\" }) を使うか、blocksWiring.buildBlocksInfra() で構築して渡してください（#6）。",
+    );
+  }
+  return infra;
 }
