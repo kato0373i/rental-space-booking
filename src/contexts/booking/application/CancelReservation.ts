@@ -37,7 +37,7 @@ export class CancelReservation {
   ): Promise<Result<CancellationResult, CancellationError | NotFound>> {
     const reservation = await this.reservations.byId(input.reservationId);
     if (!reservation) return err(notFound("該当する予約が見つかりません"));
-    if (!this.customers.emailMatches(reservation.customerId, input.email)) {
+    if (!(await this.customers.emailMatches(reservation.customerId, input.email))) {
       return err(notFound("該当する予約が見つかりません"));
     }
     return runCancellation(

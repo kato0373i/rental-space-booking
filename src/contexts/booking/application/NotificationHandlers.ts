@@ -26,13 +26,14 @@ export class NotificationHandlers {
   ) {}
 
   register(bus: EventBus): void {
-    bus.subscribe(RESERVATION_CONFIRMED, (e) => this.onConfirmed(e as ReservationConfirmed));
-    bus.subscribe(RESERVATION_CANCELLED, (e) => this.onCancelled(e as ReservationCancelled));
-    bus.subscribe(RESERVATION_REMINDER_DUE, (e) => this.onReminder(e as ReservationReminderDue));
+    // 連絡先解決・送信ともに async だが、購読は結果整合の fire-and-forget（EventBus は同期）。
+    bus.subscribe(RESERVATION_CONFIRMED, (e) => void this.onConfirmed(e as ReservationConfirmed));
+    bus.subscribe(RESERVATION_CANCELLED, (e) => void this.onCancelled(e as ReservationCancelled));
+    bus.subscribe(RESERVATION_REMINDER_DUE, (e) => void this.onReminder(e as ReservationReminderDue));
   }
 
-  private maskedRecipient(customerId: CustomerId): string {
-    return this.customers.contactOf(customerId)?.maskedEmail ?? "***";
+  private async maskedRecipient(customerId: CustomerId): Promise<string> {
+    return (await this.customers.contactOf(customerId))?.maskedEmail ?? "***";
   }
 
   /**
@@ -49,31 +50,31 @@ export class NotificationHandlers {
     });
   }
 
-  private onConfirmed(e: ReservationConfirmed): void {
+  private async onConfirmed(e: ReservationConfirmed): Promise<void> {
     this.dispatch({
       kind: "Confirmed",
       recipientRef: e.customerId,
-      maskedRecipient: this.maskedRecipient(e.customerId),
+      maskedRecipient: await this.maskedRecipient(e.customerId),
       reservationNumber: e.reservationNumber,
       body: `予約が確定しました。開始 ${e.startAt.toIsoJst()} / 金額 ${e.price.toString()}`,
     });
   }
 
-  private onCancelled(e: ReservationCancelled): void {
+  private async onCancelled(e: ReservationCancelled): Promise<void> {
     this.dispatch({
       kind: "Cancelled",
       recipientRef: e.customerId,
-      maskedRecipient: this.maskedRecipient(e.customerId),
+      maskedRecipient: await this.maskedRecipient(e.customerId),
       reservationNumber: e.reservationNumber,
       body: `予約をキャンセルしました（${e.cancelledBy === "Admin" ? "管理者操作" : "ご本人操作"}）。キャンセル料 ${e.feeAmount.toString()} / 返金 ${e.refundAmount.toString()}`,
     });
   }
 
-  private onReminder(e: ReservationReminderDue): void {
+  private async onReminder(e: ReservationReminderDue): Promise<void> {
     this.dispatch({
       kind: "Reminder",
       recipientRef: e.customerId,
-      maskedRecipient: this.maskedRecipient(e.customerId),
+      maskedRecipient: await this.maskedRecipient(e.customerId),
       reservationNumber: e.reservationNumber,
       body: `ご利用リマインド: 開始 ${e.startAt.toIsoJst()}`,
     });

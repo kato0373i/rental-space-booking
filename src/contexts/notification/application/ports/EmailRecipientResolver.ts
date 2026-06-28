@@ -10,5 +10,5 @@ import type { CustomerId } from "../../../../shared/domain/Id.js";
  */
 export interface EmailRecipientResolver {
   /** 実メールアドレス。未登録なら undefined（送信はスキップする）。 */
-  realEmailFor(customerId: CustomerId): string | undefined;
+  realEmailFor(customerId: CustomerId): Promise<string | undefined>;
 }

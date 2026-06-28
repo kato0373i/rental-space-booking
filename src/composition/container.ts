@@ -40,9 +40,13 @@ import type { SpaceRepository } from "../contexts/space/domain/ports/SpaceReposi
 
 // Customer
 import { CustomerDirectoryService } from "../contexts/customer/application/CustomerDirectoryService.js";
-import { LoginMock } from "../contexts/customer/application/LoginMock.js";
+import { Login } from "../contexts/customer/application/Login.js";
 import { RegisterMember } from "../contexts/customer/application/RegisterMember.js";
+import type { AuthGateway } from "../contexts/customer/application/ports/AuthGateway.js";
 import { InMemoryCustomerRepository } from "../contexts/customer/infrastructure/InMemoryCustomerRepository.js";
+import { InMemoryAuthGateway } from "../contexts/customer/infrastructure/InMemoryAuthGateway.js";
+import { CognitoAuthGateway } from "../contexts/customer/infrastructure/CognitoAuthGateway.js";
+import { AuthCognitoClient } from "../contexts/customer/infrastructure/AuthCognitoClient.js";
 
 // Payment / Notification
 import type { NotificationPort } from "../contexts/booking/application/ports/NotificationPort.js";
@@ -84,9 +88,8 @@ export type Container = {
   readonly getSpaceDetail: GetSpaceDetail;
   // Customer ユースケース
   readonly registerMember: RegisterMember;
-  readonly loginMock: LoginMock;
-  /** 管理者として扱う loginId 集合（シードが登録, FR-042）。LoginMock と共有。 */
-  readonly adminLoginIds: Set<string>;
+  /** ログイン。backend に応じてインメモリ/Cognito の認証 Block を利用（ADR-AB07）。 */
+  readonly login: Login;
 };
 
 /**
@@ -155,8 +158,13 @@ export function createContainer(options: ContainerOptions = {}): Container {
       : notifier;
   new NotificationHandlers(notifyPort, directory).register(bus);
 
-  // 管理者 loginId 集合（シードが登録）。LoginMock と共有して Admin ロールを判定（B-1）。
-  const adminLoginIds = new Set<string>();
+  // 認証ゲートウェイ（ADR-AB07/AB03）。blocks では Authentication Block(Cognito) 実装、
+  // memory では既存ドメイン（Customer.authenticate / Credential）を用いるインメモリ実装。
+  // ローカルの Cognito は Block のモック（実 AWS 不要・外部 I/O なし）として動作する。
+  const auth: AuthGateway =
+    backend === "blocks"
+      ? new CognitoAuthGateway(new AuthCognitoClient(new Scope("rental-space-booking"), "auth"))
+      : new InMemoryAuthGateway(customers);
 
   return {
     clock,
@@ -184,9 +192,8 @@ export function createContainer(options: ContainerOptions = {}): Container {
     resumeSpace: new ResumeSpace(spaces),
     listSpaces: new ListSpaces(spaces),
     getSpaceDetail: new GetSpaceDetail(spaces),
-    registerMember: new RegisterMember(customers),
-    loginMock: new LoginMock(customers, adminLoginIds),
-    adminLoginIds,
+    registerMember: new RegisterMember(customers, auth),
+    login: new Login(auth),
   };
 }
 

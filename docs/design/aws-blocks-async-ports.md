@@ -223,6 +223,22 @@ sequenceDiagram
   - *メッセージに実メールを載せる*: 「notifier に生 PII を渡さない」NFR-002 不変条件を緩める。却下。
 - **トレードオフ**: `NotificationMessage` に `recipientRef` 追加と `NotificationHandlers` の送信呼び出し変更という最小のアプリ層変更が入る（ドメイン層は無変更）。fire-and-forget のため送信失敗はログ観測（再送の堅牢化は #13 連携）。
 
+### ADR-AB07: 認証の Authentication Block(Cognito) 化 — 資格情報は Block、プロフィールはリポジトリ（#10）
+- **ステータス**: Accepted
+- **コンテキスト**: 現状はログインがモック（`LoginMock`）で資格情報（`Credential` VO / `Customer.authenticate`）も自前実装。本番ではパスワードハッシュ・セッション・MFA・ロール管理を自前で持ちたくない（Issue #10）。一方で `webFacade` の `SessionUser`/`Actor` 認可モデル（`toActor`/`requireAdmin`, ADR-AD01）は維持したい。
+- **決定**:
+  1. **認証を `AuthGateway` ポート（Customer アプリ層が所有）に抽象化**し、`register`/`authenticate` を `Promise` で公開する。`RegisterMember`/`LoginMock`（→ `Login`）はこのポートに委譲する薄いユースケースになる。
+  2. **役割分担を明確化**: 資格情報・セッション・ロールは **Authentication Block(Cognito)** が所有し、**プロフィール/連絡先（PII）は `CustomerRepository` が所有**する。両者は `customerId` で連結する（Cognito 側に `custom:customer_id` 属性として保持）。これにより通知の宛先解決（ADR-AB06）や予約照会の照合は引き続きリポジトリ側で完結する。
+  3. **ロール（Member/Admin）は Cognito の `custom:role` 属性へマッピング**し、`signIn` 後に属性から `Actor.role` を復元する。最終的な認可判定は従来どおりアプリ層入口（`requireAdmin`, ADR-AD01）で行い、ドメイン層へは持ち込まない。
+  4. **インメモリ実装（`InMemoryAuthGateway`）と Cognito 実装（`CognitoAuthGateway`）を同一ポート下で共存**させ、`createContainer({ backend })` で切替（ADR-AB03 を踏襲）。インメモリ版は既存の `Credential`/`Customer.authenticate`（ドメイン無変更, NFR-005）をそのまま利用する。
+  5. **ローカルは Cognito Block のモック**（実 AWS 不要・外部 I/O なし）。`CognitoAuthGateway` は Scope に直接結合せず、最小面の `CognitoAuthClient` インターフェース越しに使う（テストで fake を注入可能, SES アダプタの `EmailSender` と同方針）。sign-up 確認コードはモックの `codeDelivery` フックで取得して `confirmSignUp` を即時実行する。
+  6. **`CustomerRepository` ほか Customer 関連ポート（`CustomerDirectoryPort`/`EmailRecipientResolver`）を async 化**（§5）。`Customer.authenticate`/`Credential` などドメイン層は無変更。
+- **検討した代替案**:
+  - *ロールを Cognito グループ（`requireRole`）で表現*: RBAC としては正攻法だが、Preview のモックにグループ加入の管理 API（`addUserToGroup`）が公開されておらず、sign-up 時に確定できない。`custom:role` 属性なら sign-up で確定でき、既存のアプリ層認可（ADR-AD01）とも整合する。グループ管理 API が利用可能になり次第の移行候補として保留（§9）。却下（現時点）。
+  - *モック認証を撤去し Cognito 一本化*: 学習・テスト・デモのインメモリ完結（NFR-003）を損なう。却下。
+  - *資格情報も含めて Customer 集約に残す*: 「自前でパスワードを持たない」という #10 の目的に反する。却下。
+- **トレードオフ**: 認証ポートの2実装維持コスト（共通の契約テストで同値性を担保）。プロフィールと Cognito ユーザーの整合を `customerId` 連結で保つ責務がアプリ層に残る（register は Customer プロフィール確定 → Cognito sign-up の順で行い、sign-up 失敗時はプロフィールを保存しないことで orphan を防ぐ）。
+
 ## 8. 要件トレーサビリティ
 
 | 要件ID | 対応する設計項目 | 備考 |
@@ -234,7 +250,8 @@ sequenceDiagram
 | FR-019 | §4 (status, created_at) index, §5 `list`(async) | 管理者横断一覧 |
 | FR-032 | §4 リマインド index, §5 `confirmedStartingBetween`(async) | リマインド |
 | FR-030/031/032 | ADR-AB06, `SesNotificationAdapter` | 確定/キャンセル/リマインドの Email Block 送信（#11） |
-| NFR-002 | ADR-AB06（`EmailRecipientResolver` で宛先を一点解決, マスク済みのみログ） | 通知での生 PII 非露出 |
+| FR-040/042 | ADR-AB07, `AuthGateway`/`CognitoAuthGateway` | 会員登録・ログイン・ロール（Member/Admin）を Authentication Block 化（#10） |
+| NFR-002 | ADR-AB06（`EmailRecipientResolver` で宛先を一点解決, マスク済みのみログ）／ADR-AB07（資格情報は Cognito, PII プロフィールはリポジトリ） | 通知での生 PII 非露出・資格情報の自前保持回避 |
 | NFR-003 | ADR-AB03 | インメモリ共存（学習・テスト） |
 | NFR-006 | §1/§2, ADR-AB03, #7 `backend` シーム | DI 設定のみで切替 |
 | （ドメイン無変更） | §3 | DDD の核を保持（NFR-005 整合） |
@@ -246,9 +263,12 @@ sequenceDiagram
 | 1 | `bb-data` のトランザクション API（`db.transaction`）でユニーク違反を捕捉する際の例外型の確定（`DatabaseErrors` を要実機確認） | 実装(#8) | #8 着手時 |
 | 2 | UI の async 化に伴うローディング/エラー表示の最小調整範囲 | 実装(#15) | #15 |
 | 3 | AWS Blocks は Preview。本番デプロイ（sandbox/deploy）の採否は別途判断 | — | 保留 |
+| 4 | ロールを Cognito グループ（`requireRole`）へ移行（グループ加入の管理 API 公開が前提）。現状は `custom:role` 属性（ADR-AB07） | 実装(#10 後続) | 保留 |
+| 5 | 顧客プロフィール（連絡先）の Database Block 化（`BlocksCustomerRepository`）。#10 では認証 Block を優先し、プロフィールはインメモリ共存のまま（役割分担は ADR-AB07 で確定済み） | 実装(後続) | 保留 |
 
 ## 10. 変更履歴
 
 | 日付 | 変更内容 | 変更者 |
 |---|---|---|
 | 2026-06-27 | 初版（#8〜#15 の前提設計。async ポート化と占有の物理制約を確定） | desartslab-kato |
+| 2026-06-28 | ADR-AB07 追記（#10 認証の Authentication Block(Cognito) 化。資格情報=Block／プロフィール=リポジトリ、ロール=`custom:role` 属性、Customer 関連ポートの async 化） | desartslab-kato |

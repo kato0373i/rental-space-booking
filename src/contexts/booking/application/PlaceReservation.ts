@@ -87,7 +87,7 @@ export class PlaceReservation {
     if (!policy.ok) return err(validationError(policy.error));
 
     // 顧客を解決: 会員経路は customerId で直接紐づけ、ゲスト経路は連絡先から発行（ADR-F02 / ADR-008）。
-    const customerId = this.resolveCustomer(input);
+    const customerId = await this.resolveCustomer(input);
     if (!customerId.ok) return customerId;
 
     // Pending 作成。
@@ -149,9 +149,11 @@ export class PlaceReservation {
    * 予約者の CustomerId を解決する。
    * 会員経路（customerId 指定）は存在検証のうえ直接紐づけ、ゲスト経路は連絡先からゲスト顧客を発行する。
    */
-  private resolveCustomer(input: PlaceReservationInput): Result<CustomerId, ValidationError> {
+  private async resolveCustomer(
+    input: PlaceReservationInput,
+  ): Promise<Result<CustomerId, ValidationError>> {
     if (input.customerId !== undefined) {
-      if (!this.customers.contactOf(input.customerId)) {
+      if (!(await this.customers.contactOf(input.customerId))) {
         return err(validationError("指定された会員が見つかりません"));
       }
       return ok(input.customerId);

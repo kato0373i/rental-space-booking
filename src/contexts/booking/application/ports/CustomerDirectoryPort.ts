@@ -19,9 +19,9 @@ export type ContactView = {
  * ゲスト予約時はゲスト顧客を発行し CustomerId を返す。Booking→Customer の単方向 ID 参照。
  */
 export interface CustomerDirectoryPort {
-  resolveOrIssueGuest(contact: GuestContactInput): Result<CustomerId, ValidationError>;
+  resolveOrIssueGuest(contact: GuestContactInput): Promise<Result<CustomerId, ValidationError>>;
   /** 通知用のマスク済み連絡先。 */
-  contactOf(customerId: CustomerId): ContactView | undefined;
+  contactOf(customerId: CustomerId): Promise<ContactView | undefined>;
   /** 予約照会の照合（FR-016）。一致しなければ false（存在を推測させない判定に用いる）。 */
-  emailMatches(customerId: CustomerId, email: string): boolean;
+  emailMatches(customerId: CustomerId, email: string): Promise<boolean>;
 }

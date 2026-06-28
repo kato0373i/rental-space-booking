@@ -104,8 +104,8 @@ export type AppServices = {
   lookup(reservationNumber: string, email: string): Promise<UiResult<ReservationView>>;
   cancel(reservationId: string, email: string): Promise<UiResult<CancellationResult>>;
   listMyReservations(memberId: string): Promise<ReservationView[]>;
-  registerMember(input: ContactInput & { loginId: string; secret: string }): UiResult<{ customerId: string }>;
-  login(loginId: string, secret: string): UiResult<SessionUser>;
+  registerMember(input: ContactInput & { loginId: string; secret: string }): Promise<UiResult<{ customerId: string }>>;
+  login(loginId: string, secret: string): Promise<UiResult<SessionUser>>;
   // デモ操作（ADR-F04）
   notifications(): NotificationMessage[];
   setPaymentBehavior(behavior: PaymentBehavior): void;
@@ -206,8 +206,8 @@ export async function createWebApp(): Promise<AppServices> {
 
     registerMember: (input) => c.registerMember.execute(input),
 
-    login: (loginId, secret) => {
-      const result = c.loginMock.execute({ loginId, secret });
+    login: async (loginId, secret) => {
+      const result = await c.login.execute({ loginId, secret });
       if (!result.ok) return result;
       const actor: Actor = result.value;
       const role = actor.role === "Admin" ? "Admin" : "Member";
@@ -247,13 +247,15 @@ export async function createWebApp(): Promise<AppServices> {
           ...(filter.size ? { size: filter.size } : {}),
         });
         if (!r.ok) return r;
-        const items: ReservationRow[] = r.value.items.map((v) => {
-          const contact = c.directory.contactOf(CustomerId.of(v.customerId));
-          return {
-            ...v,
-            maskedRecipient: contact ? `${contact.maskedName} / ${contact.maskedEmail}` : "(不明)",
-          };
-        });
+        const items: ReservationRow[] = await Promise.all(
+          r.value.items.map(async (v) => {
+            const contact = await c.directory.contactOf(CustomerId.of(v.customerId));
+            return {
+              ...v,
+              maskedRecipient: contact ? `${contact.maskedName} / ${contact.maskedEmail}` : "(不明)",
+            };
+          }),
+        );
         return { ok: true, value: { items, total: r.value.total, page: r.value.page, size: r.value.size } };
       },
 

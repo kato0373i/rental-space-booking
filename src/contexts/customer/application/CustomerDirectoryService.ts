@@ -19,20 +19,22 @@ import type { CustomerRepository } from "../domain/ports/CustomerRepository.js";
 export class CustomerDirectoryService implements CustomerDirectoryPort {
   constructor(private readonly customers: CustomerRepository) {}
 
-  resolveOrIssueGuest(contact: GuestContactInput): Result<CustomerId, ValidationError> {
+  async resolveOrIssueGuest(
+    contact: GuestContactInput,
+  ): Promise<Result<CustomerId, ValidationError>> {
     const info = ContactInfo.of(contact.name, contact.email, contact.phone);
     if (!info.ok) return err(validationError(info.error));
 
-    const existing = this.customers.byEmail(info.value.email);
+    const existing = await this.customers.byEmail(info.value.email);
     if (existing) return ok(existing.id);
 
     const guest = Customer.issueGuest(info.value);
-    this.customers.save(guest);
+    await this.customers.save(guest);
     return ok(guest.id);
   }
 
-  contactOf(customerId: CustomerId): ContactView | undefined {
-    const customer = this.customers.byId(customerId);
+  async contactOf(customerId: CustomerId): Promise<ContactView | undefined> {
+    const customer = await this.customers.byId(customerId);
     if (!customer) return undefined;
     return {
       maskedName: customer.contact.maskedName(),
@@ -40,8 +42,8 @@ export class CustomerDirectoryService implements CustomerDirectoryPort {
     };
   }
 
-  emailMatches(customerId: CustomerId, email: string): boolean {
-    const customer = this.customers.byId(customerId);
+  async emailMatches(customerId: CustomerId, email: string): Promise<boolean> {
+    const customer = await this.customers.byId(customerId);
     return customer ? customer.contact.emailEquals(email) : false;
   }
 }
