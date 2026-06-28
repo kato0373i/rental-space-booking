@@ -1,7 +1,8 @@
 {
-  // AWS Blocks アプリ定義（aws-blocks/ 配下）専用の型チェック設定。
-  // backend 用 tsconfig.json を継承する。ドメイン/バックエンド(src) とは独立した
-  // ビルド単位であり、相互に import しない（依存方向の混線を型レベルで防ぐ）。
+  // AWS Blocks アプリ定義（aws-blocks/ 配下）専用の型チェック設定。backend 用 tsconfig.json を継承。
+  // #7〜#14 は src 非依存の土台だったが、#15 で aws-blocks/index.ts を合成ルートへ昇格し
+  // src/composition（型安全 RPC 公開）へ依存させる（ADR-AB11）。逆方向（src → aws-blocks）は
+  // 持たせない（UI は実行時に型付きクライアント "aws-blocks" を解決する）。
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "noEmit": true

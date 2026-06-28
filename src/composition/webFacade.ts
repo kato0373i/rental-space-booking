@@ -10,7 +10,7 @@ import type { SpaceSummary } from "../contexts/space/application/ListSpaces.js";
 import type { SpaceDetail } from "../contexts/space/application/GetSpaceDetail.js";
 import type { SpaceInput } from "../contexts/space/application/spaceFactory.js";
 import type { ReservationStatus } from "../contexts/booking/domain/ReservationStatus.js";
-import { createContainer } from "./container.js";
+import { createContainer, type ContainerOptions } from "./container.js";
 import { seed } from "./seed.js";
 
 // UI が触れる型はここに集約・再エクスポートする（UI→composition の単一依存, NFR-F04）。
@@ -141,12 +141,20 @@ const toActor = (session: SessionUser): Actor => ({
 });
 
 /**
- * ブラウザ内アプリの起動（ADR-F01）。コンテナ生成＋シードを行い、UI 向け facade を返す。
- * ページロードごとに1インスタンス。データはインメモリでリロード揮発（NFR-F03）。
+ * アプリの起動。コンテナ生成＋シードを行い、UI 向け facade を返す（ADR-F01）。
+ *
+ * - 既定（memory）: ブラウザ内インメモリ。ページロードごとに1インスタンス・揮発（NFR-F03, ADR-F01）。
+ * - `backend: "blocks"`: AWS Blocks の永続バックエンド（Database 永続・複数クライアント共有, #15）。
+ *   この経路は `aws-blocks/index.ts` の RPC ハンドラ（合成ルート）から呼ばれ、型安全クライアント越しに UI へ繋がる。
+ *
+ * シードは冪等: すでにスペースが存在する（＝永続 DB が初期化済み/リロード）場合は再シードしない。
  */
-export async function createWebApp(): Promise<AppServices> {
-  const c = createContainer();
-  await seed(c);
+export async function createWebApp(options: ContainerOptions = {}): Promise<AppServices> {
+  const c = createContainer(options);
+  // 永続バックエンドでは初回のみシードする（リロード・複数接続での重複登録を防ぐ）。
+  if ((await c.listSpaces.execute(true)).length === 0) {
+    await seed(c);
+  }
 
   return {
     listSpaces: () => c.listSpaces.execute(),

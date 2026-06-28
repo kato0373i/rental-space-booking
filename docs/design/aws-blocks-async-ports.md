@@ -279,6 +279,22 @@ sequenceDiagram
   - *PlaceReservation を完全 Webhook 駆動（Pending のまま即返し）に作り替え*: コア決定「決済成功で確定」の同期 Saga を壊し変更が大きい。同期与信＋Webhook 後追い（冪等）の併用で十分。却下。
 - **トレードオフ**: 同期確定と Webhook 決着の二重適用可能性を `SettleReservationPayment` の冪等（status 検査）で吸収する。実 Stripe SDK の `StripeGateway`/`StripeWebhookVerifier` 実装と実認証情報はデプロイ時に注入（Preview 段階の実デプロイ採否は §9 #3）。
 
+### ADR-AB11: フロントエンドの AWS Blocks 型安全クライアント接続 — `aws-blocks/index.ts` を合成ルートへ昇格（#15）
+- **ステータス**: Accepted
+- **コンテキスト**: SPA は `createWebApp()` をブラウザ内で直接呼びインメモリ・リロード揮発（ADR-F01/NFR-F03）。複数ユーザー共有・永続化がない。AWS Blocks は DBスキーマ→ランタイムAPI→UI まで型が伝播するエンドツーエンド型安全クライアントを提供し、`webFacade` は既に DTO/プリミティブのみの型付きファサードのため移行先として自然。#7 では `aws-blocks/index.ts` を「土台のみ・src 非依存」としたが、#15 で**実フロー RPC を公開する合成ルート**へ昇格させる。
+- **決定**:
+  1. **`aws-blocks/index.ts` を合成ルートに昇格**し、`createWebApp({ backend: "blocks" })` の永続バックエンド（Database/Cognito/SES/Jobs）を1度だけ構築・共有する singleton 越しに、`app`（予約フロー）/`admin`（管理）の `ApiNamespace`（型安全 RPC）を公開する。型付きクライアント `import { app, admin } from "aws-blocks"` から DTO/プリミティブのみ授受。これに伴い tsconfig.blocks の「src 非依存」は #15 で解除（土台フェーズの分離ガードを統合フェーズで統合）。
+  2. **UI は `AppServices` ファサードのまま**。`createBlocksAppServices(client)` が型安全クライアントを `AppServices` に適合させ、`AppProvider` は `VITE_BACKEND=blocks` のとき動的 import で接続（既定はブラウザ内 memory を温存, NFR-F03）。UI ページ群は無変更。
+  3. **エラー写像**: 業務エラーはサーバが `UiResult` で返し、想定外例外（ネットワーク/サーバ）のみ client 層で `UiResult`（`AppError`）へ写像する。
+  4. **永続化**: 予約・スペース・占有は Database に永続（リロード・別インスタンスで保持。`blocksScopeId` で隔離テスト可）。シードは初回のみ（冪等）。
+  5. **型安全（DB↔UI）**: `ApiNamespace` のジェネリクスで DB→RPC→UI まで型が伝播し、不整合はコンパイル時に検出（tsconfig.ui に `paths: { "aws-blocks": [...] }` を追加）。
+- **検討した代替案**:
+  - *aws-blocks を土台のみに保ち RPC を別所に置く*: 型安全クライアント `import from "aws-blocks"` は `aws-blocks/index.ts` の ApiNamespace を入口にするため不可。却下。
+  - *UI を直接 Blocks クライアント型に依存させる*: ページ改修が広がる。`AppServices` 適合層を1枚挟み無変更を維持。却下。
+- **トレードオフ / 既知の制約**:
+  - **顧客プロフィール（連絡先）は現状インメモリ共存**（認証は Cognito へ移行済・プロフィールの Database Block 化は後続, ADR-AB07 / §9 #5）。このため別インスタンス（リロード相当）での「予約番号＋メール照会」は復元できない。**永続化されるのは予約・スペース・占有**（本 PR の永続テストはこれを検証）。
+  - **`npm run build:web`（本番AOTビルド）は #13 以降の既存問題**で、ブラウザSPAバンドルが `container.ts` 経由で Node 専用の Blocks アダプタを取り込み失敗する。ブラウザ memory 既定経路が Blocks を静的 import しない合成分離（blocks 配線の動的 import 化）が必要で、別途対応（§9 #6）。`npm run dev`（memory）・`npm run dev:blocks`・`npm test` は影響なし。
+
 ## 8. 要件トレーサビリティ
 
 | 要件ID | 対応する設計項目 | 備考 |
@@ -294,6 +310,7 @@ sequenceDiagram
 | FR-032 / U-03 | ADR-AB08, `CronJob`/`runReminderCycle`/`ReminderLog` | 利用24h前リマインドの自動定期実行・二重送信防止（#12） |
 | FR-030/031/032 | ADR-AB09, `BlocksEventBus`(`AsyncJob`) | ドメインイベント配信の非同期化・リトライ/DLQ（#13） |
 | FR-012/020/021 | ADR-AB10, `StripePaymentAdapter`/`StripeWebhookProcessor`/`SettleReservationPayment` | 決済の外部プロバイダ化・Webhook×Background jobs 決着・冪等（#14） |
+| NFR-006/F03, FR-F* | ADR-AB11, `aws-blocks/index.ts`(app/admin RPC)/`createBlocksAppServices` | フロントエンドの型安全クライアント接続・実バックエンド永続化（#15） |
 | NFR-002 | ADR-AB06（`EmailRecipientResolver` で宛先を一点解決, マスク済みのみログ）／ADR-AB07（資格情報は Cognito, PII プロフィールはリポジトリ） | 通知での生 PII 非露出・資格情報の自前保持回避 |
 | NFR-003 | ADR-AB03 | インメモリ共存（学習・テスト） |
 | NFR-006 | §1/§2, ADR-AB03, #7 `backend` シーム | DI 設定のみで切替 |
@@ -307,7 +324,8 @@ sequenceDiagram
 | 2 | UI の async 化に伴うローディング/エラー表示の最小調整範囲 | 実装(#15) | #15 |
 | 3 | AWS Blocks は Preview。本番デプロイ（sandbox/deploy）の採否は別途判断 | — | 保留 |
 | 4 | ロールを Cognito グループ（`requireRole`）へ移行（グループ加入の管理 API 公開が前提）。現状は `custom:role` 属性（ADR-AB07） | 実装(#10 後続) | 保留 |
-| 5 | 顧客プロフィール（連絡先）の Database Block 化（`BlocksCustomerRepository`）。#10 では認証 Block を優先し、プロフィールはインメモリ共存のまま（役割分担は ADR-AB07 で確定済み） | 実装(後続) | 保留 |
+| 5 | 顧客プロフィール（連絡先）の Database Block 化（`BlocksCustomerRepository`）。#10 では認証 Block を優先し、プロフィールはインメモリ共存のまま（役割分担は ADR-AB07 で確定済み）。これが入るまで「予約番号＋メール照会」はリロード跨ぎで復元不可（ADR-AB11） | 実装(後続) | 保留 |
+| 6 | `npm run build:web`（本番AOT）でブラウザSPAバンドルが Node 専用 Blocks アダプタを取り込み失敗（#13 以降の既存問題）。memory 既定経路が Blocks を静的 import しない合成分離（blocks 配線の動的 import 化）が必要（ADR-AB11） | 実装(後続) | 保留 |
 
 ## 10. 変更履歴
 
@@ -318,3 +336,4 @@ sequenceDiagram
 | 2026-06-28 | ADR-AB08 追記（#12 リマインドの Scheduled tasks Block(cron) 化。`runReminderCycle` 抽出と `ReminderLog` 冪等ログによる二重送信防止） | desartslab-kato |
 | 2026-06-28 | ADR-AB09 追記（#13 ドメインイベント配信の Background jobs Block(AsyncJob) 化。非同期ワーカー＋リトライ/DLQ、`EventHandler` の Promise 化、`NotificationHandlers` の失敗伝播化） | desartslab-kato |
 | 2026-06-28 | ADR-AB10 追記（#14 決済フロー本番化。外部プロバイダ(Stripe)アダプタ＋Webhook×Background jobs 決着、`SettleReservationPayment` の冪等反映。決済 Block は無し・モックは温存） | desartslab-kato |
+| 2026-06-28 | ADR-AB11 追記（#15 フロントエンドの AWS Blocks 型安全クライアント接続。`aws-blocks/index.ts` を合成ルートへ昇格し app/admin RPC を公開、`createBlocksAppServices` で UI 無変更接続、予約データ永続化。build:web の既存課題を §9 #6 に記録） | desartslab-kato |
