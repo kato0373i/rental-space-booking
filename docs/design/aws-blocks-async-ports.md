@@ -252,6 +252,19 @@ sequenceDiagram
   - *cron ハンドラを `aws-blocks/index.ts` に置き直接アプリ呼び出し*: `aws-blocks/` は src と相互 import しない独立ビルド単位（tsconfig.blocks）。cron の配線は他の Block 資源（Database/EmailClient）同様 `composition` に置く。却下。
 - **トレードオフ**: 冪等ログのストレージが増える（予約1件につき1行）。cron の実起動（タイマー/EventBridge）は実行エントリ（composition ルート）で `startReminderCron` を呼ぶ構成とし、Preview 段階の実デプロイ採否は別途（§9 #3）。
 
+### ADR-AB09: ドメインイベント配信の Background jobs Block(AsyncJob) 化 — 非同期ワーカー＋リトライ/DLQ（#13）
+- **ステータス**: Accepted
+- **コンテキスト**: `EventBus.publish` はプロセス内同期で、ハンドラ（通知送信など）に失敗時のリトライ・耐障害性がない。通知のような外部 I/O を伴う購読処理を、発火元（予約確定等）から切り離して非同期・再試行可能にしたい（FR-030/031/032）。一方でイベント定義（`Reservation*` イベント）とポート（publish/subscribe）は変えたくない。
+- **決定**:
+  1. **`BlocksEventBus`（`AsyncJob` ＝ SQS+Lambda 相当）を `EventBus` の実装として追加**。`publish` はイベントをジョブ投入して即時に返り（結果整合）、購読ハンドラは AsyncJob のワーカーで非同期実行する。ハンドラが reject すると AsyncJob が自動リトライし、`maxRetries`（既定3）超過で **DLQ** へ送る。`createContainer({ backend })` で `InMemoryEventBus`（プロセス内 fire-and-forget）と切替（ADR-AB03）。ポート（publish/subscribe）は維持。
+  2. **`EventHandler` を `void | Promise<void>` に拡張**し、ハンドラが失敗を Promise reject として表面化できるようにする（リトライ/DLQ の対象に）。イベント定義・発火側（`PlaceReservation`/`CancelReservation`/`TriggerReminders` の `publish` 呼び出し）は無変更。
+  3. **`NotificationHandlers` を「内部 fire-and-forget」から「失敗を伝播する純粋な async ハンドラ」へ変更**。非同期境界とリトライは EventBus 実装が一元的に担う（ADR-AB06 の「発火元を送信遅延に結合しない」性質は publish の即時 return とジョブ投入で維持）。インメモリ実装はハンドラを fire-and-forget で起動し例外をログに留める（リトライなし、学習・テスト用）。
+  4. **配信は at-least-once（順序保証なし・重複あり）。ハンドラは冪等であること**を要件とする。リマインドは `ReminderLog`（#12）で冪等化済み。確定/キャンセル通知の厳密な重複排除（dedup キー）は後続で扱う（§9）。
+- **検討した代替案**:
+  - *EventBus を同期のまま維持*: リトライ・耐障害性を満たせない。却下。
+  - *ハンドラごとに個別ジョブへ分割*: 1ハンドラ失敗時の他ハンドラへの巻き込みを避けられるが、現状 type ごとに購読は1つ（`NotificationHandlers`）のため過剰。type 単位ディスパッチ＋冪等で十分。将来の購読増時に再検討（§9）。
+- **トレードオフ**: at-least-once により重複配信があり得る（冪等で吸収）。AsyncJob のワーカー実起動は実行エントリ（composition ルート/デプロイ）で駆動し、Preview 段階の実デプロイ採否は別途（§9 #3）。
+
 ## 8. 要件トレーサビリティ
 
 | 要件ID | 対応する設計項目 | 備考 |
@@ -265,6 +278,7 @@ sequenceDiagram
 | FR-030/031/032 | ADR-AB06, `SesNotificationAdapter` | 確定/キャンセル/リマインドの Email Block 送信（#11） |
 | FR-040/042 | ADR-AB07, `AuthGateway`/`CognitoAuthGateway` | 会員登録・ログイン・ロール（Member/Admin）を Authentication Block 化（#10） |
 | FR-032 / U-03 | ADR-AB08, `CronJob`/`runReminderCycle`/`ReminderLog` | 利用24h前リマインドの自動定期実行・二重送信防止（#12） |
+| FR-030/031/032 | ADR-AB09, `BlocksEventBus`(`AsyncJob`) | ドメインイベント配信の非同期化・リトライ/DLQ（#13） |
 | NFR-002 | ADR-AB06（`EmailRecipientResolver` で宛先を一点解決, マスク済みのみログ）／ADR-AB07（資格情報は Cognito, PII プロフィールはリポジトリ） | 通知での生 PII 非露出・資格情報の自前保持回避 |
 | NFR-003 | ADR-AB03 | インメモリ共存（学習・テスト） |
 | NFR-006 | §1/§2, ADR-AB03, #7 `backend` シーム | DI 設定のみで切替 |
@@ -287,3 +301,4 @@ sequenceDiagram
 | 2026-06-27 | 初版（#8〜#15 の前提設計。async ポート化と占有の物理制約を確定） | desartslab-kato |
 | 2026-06-28 | ADR-AB07 追記（#10 認証の Authentication Block(Cognito) 化。資格情報=Block／プロフィール=リポジトリ、ロール=`custom:role` 属性、Customer 関連ポートの async 化） | desartslab-kato |
 | 2026-06-28 | ADR-AB08 追記（#12 リマインドの Scheduled tasks Block(cron) 化。`runReminderCycle` 抽出と `ReminderLog` 冪等ログによる二重送信防止） | desartslab-kato |
+| 2026-06-28 | ADR-AB09 追記（#13 ドメインイベント配信の Background jobs Block(AsyncJob) 化。非同期ワーカー＋リトライ/DLQ、`EventHandler` の Promise 化、`NotificationHandlers` の失敗伝播化） | desartslab-kato |

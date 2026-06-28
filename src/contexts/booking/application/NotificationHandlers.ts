@@ -26,10 +26,11 @@ export class NotificationHandlers {
   ) {}
 
   register(bus: EventBus): void {
-    // 連絡先解決・送信ともに async だが、購読は結果整合の fire-and-forget（EventBus は同期）。
-    bus.subscribe(RESERVATION_CONFIRMED, (e) => void this.onConfirmed(e as ReservationConfirmed));
-    bus.subscribe(RESERVATION_CANCELLED, (e) => void this.onCancelled(e as ReservationCancelled));
-    bus.subscribe(RESERVATION_REMINDER_DUE, (e) => void this.onReminder(e as ReservationReminderDue));
+    // ハンドラは Promise を返し、非同期実行・失敗時リトライ/DLQ は EventBus 実装に委ねる（ADR-AB09）。
+    // インメモリ実装では fire-and-forget、Blocks 実装では Background jobs のワーカーで実行される。
+    bus.subscribe(RESERVATION_CONFIRMED, (e) => this.onConfirmed(e as ReservationConfirmed));
+    bus.subscribe(RESERVATION_CANCELLED, (e) => this.onCancelled(e as ReservationCancelled));
+    bus.subscribe(RESERVATION_REMINDER_DUE, (e) => this.onReminder(e as ReservationReminderDue));
   }
 
   private async maskedRecipient(customerId: CustomerId): Promise<string> {
@@ -37,21 +38,15 @@ export class NotificationHandlers {
   }
 
   /**
-   * 通知送信は外部 I/O（async）だが、ドメインイベント購読は結果整合のため fire-and-forget で呼ぶ
-   * （EventBus は同期のまま。発火元トランザクションを送信遅延に結合させない, ADR-AB06）。
-   * 送信失敗はマスク済み情報のみログに残す（NFR-002）。
+   * 通知を送信する。例外は握りつぶさず呼び出し元（EventBus）へ伝播させ、リトライ/DLQ の判断に委ねる
+   * （ADR-AB09）。生 PII は載せない（NFR-002, 宛先解決は SES アダプタ内に閉じる, ADR-AB06）。
    */
-  private dispatch(message: Parameters<NotificationPort["send"]>[0]): void {
-    void this.notifier.send(message).catch((err: unknown) => {
-      console.error(
-        `[通知:${message.kind}] 送信失敗 宛先=${message.maskedRecipient} 予約=${message.reservationNumber}`,
-        err,
-      );
-    });
+  private send(message: Parameters<NotificationPort["send"]>[0]): Promise<void> {
+    return this.notifier.send(message);
   }
 
   private async onConfirmed(e: ReservationConfirmed): Promise<void> {
-    this.dispatch({
+    await this.send({
       kind: "Confirmed",
       recipientRef: e.customerId,
       maskedRecipient: await this.maskedRecipient(e.customerId),
@@ -61,7 +56,7 @@ export class NotificationHandlers {
   }
 
   private async onCancelled(e: ReservationCancelled): Promise<void> {
-    this.dispatch({
+    await this.send({
       kind: "Cancelled",
       recipientRef: e.customerId,
       maskedRecipient: await this.maskedRecipient(e.customerId),
@@ -71,7 +66,7 @@ export class NotificationHandlers {
   }
 
   private async onReminder(e: ReservationReminderDue): Promise<void> {
-    this.dispatch({
+    await this.send({
       kind: "Reminder",
       recipientRef: e.customerId,
       maskedRecipient: await this.maskedRecipient(e.customerId),

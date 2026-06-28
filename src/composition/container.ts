@@ -4,6 +4,7 @@ import { Database, EmailClient } from "@aws-blocks/blocks";
 import type { Clock } from "../shared/domain/Clock.js";
 import { SystemClock } from "../shared/domain/Clock.js";
 import { InMemoryEventBus, type EventBus } from "../shared/domain/EventBus.js";
+import { BlocksEventBus } from "../shared/infrastructure/BlocksEventBus.js";
 
 // Booking
 import { CancelReservation } from "../contexts/booking/application/CancelReservation.js";
@@ -121,7 +122,12 @@ export function createContainer(options: ContainerOptions = {}): Container {
   const backend: AppBackend = options.backend ?? "memory";
 
   const clock: Clock = options.clock ?? new SystemClock();
-  const bus = new InMemoryEventBus();
+  // イベントバス（#13）。blocks は Background jobs Block（AsyncJob）で非同期＋リトライ/DLQ、
+  // memory はプロセス内 fire-and-forget（ADR-AB09）。ポート（publish/subscribe）は共通。
+  const bus: EventBus =
+    backend === "blocks"
+      ? new BlocksEventBus(new Scope("rental-space-booking"))
+      : new InMemoryEventBus();
 
   // リポジトリ。予約・スペースは backend で切替（#8/#9）。顧客は順次移行（#10）。
   // blocks では 1 つの Database を予約・スペースで共有する（マイグレーションは初回クエリ時に一括適用）。
