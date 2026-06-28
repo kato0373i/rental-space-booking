@@ -25,6 +25,9 @@ import {
   type SqlDatabase,
 } from "../contexts/booking/infrastructure/BlocksReservationRepository.js";
 import type { ReservationRepository } from "../contexts/booking/domain/ports/ReservationRepository.js";
+import type { ReminderLog } from "../contexts/booking/application/ports/ReminderLog.js";
+import { InMemoryReminderLog } from "../contexts/booking/infrastructure/InMemoryReminderLog.js";
+import { BlocksReminderLog } from "../contexts/booking/infrastructure/BlocksReminderLog.js";
 
 // Space
 import { EditSpace } from "../contexts/space/application/EditSpace.js";
@@ -130,6 +133,10 @@ export function createContainer(options: ContainerOptions = {}): Container {
   const reservations: ReservationRepository = blocksDb
     ? new BlocksReservationRepository(blocksDb)
     : new InMemoryReservationRepository();
+  // リマインド冪等ログ（#12）。blocks は予約と同じ Database を共有する。
+  const reminderLog: ReminderLog = blocksDb
+    ? new BlocksReminderLog(blocksDb)
+    : new InMemoryReminderLog();
 
   // 汎用サブドメイン（モックアダプタ）
   const payment = new MockPaymentAdapter();
@@ -185,7 +192,7 @@ export function createContainer(options: ContainerOptions = {}): Container {
     forceCancelReservation: new ForceCancelReservation(reservations, payment, bus, clock),
     markNoShow: new MarkNoShow(reservations, clock),
     listAllReservations: new ListAllReservations(reservations, clock),
-    triggerReminders: new TriggerReminders(reservations, bus),
+    triggerReminders: new TriggerReminders(reservations, bus, reminderLog),
     registerSpace: new RegisterSpace(spaces),
     editSpace: new EditSpace(spaces),
     suspendSpace: new SuspendSpace(spaces),

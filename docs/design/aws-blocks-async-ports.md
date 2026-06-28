@@ -239,6 +239,19 @@ sequenceDiagram
   - *資格情報も含めて Customer 集約に残す*: 「自前でパスワードを持たない」という #10 の目的に反する。却下。
 - **トレードオフ**: 認証ポートの2実装維持コスト（共通の契約テストで同値性を担保）。プロフィールと Cognito ユーザーの整合を `customerId` 連結で保つ責務がアプリ層に残る（register は「Customer プロフィール組み立て → Cognito sign-up → 成功時のみプロフィール保存」の順で行い、sign-up 失敗時はプロフィールを保存しないことで orphan を防ぐ）。
 
+### ADR-AB08: リマインドの Scheduled tasks Block(cron) 化 — 冪等ログで二重送信を防ぐ（#12）
+- **ステータス**: Accepted
+- **コンテキスト**: リマインド（`TriggerReminders`, FR-032 / U-03）は「デモでは手動トリガ」で、UI ボタン依存だった。本来は利用開始24時間前に自動送信したい。だが cron は **at-least-once** かつ短間隔で反復起動し、同一予約は窓 `[now, now+24h)` に滞在し続けるため、素朴な実装では同じ予約へ何度も送ってしまう。
+- **決定**:
+  1. **`CronJob`（Scheduled tasks Block）で `TriggerReminders` を定期起動**する。cron ハンドラの本体は `runReminderCycle(container)`（`referenceTime = clock.now()` で1サイクル実行）として切り出し、タイマーに依存せず手動実行・テスト・cron から共通利用する。スケジュールは既定 `rate(5 minutes)`。
+  2. **二重送信は `ReminderLog` ポート（冪等）で防ぐ**。`markIfFirst(reservationId)` を**アトミックな check-and-set**とし、初回のみ `true`（送る）を返す。`TriggerReminders` は送信前に claim し、`false` ならスキップする。これにより cron の反復起動・at-least-once・手動トリガの併用すべてに対して冪等。
+  3. **インメモリ（`InMemoryReminderLog`=Set）と Blocks（`BlocksReminderLog`=`sent_reminders` テーブルの主キー＋`INSERT … ON CONFLICT DO NOTHING` の rowCount）を同一ポート下で共存**（ADR-AB03/AB05、契約テストで同値性担保）。冪等性は予約と同じ Database の主キー制約で物理保証する。
+  4. **UI の手動トリガはローカル開発/デモ用に温存**（`webFacade.triggerReminders`）。冪等ログにより手動と cron の二重送信も起きない。
+- **検討した代替案**:
+  - *`Reservation` 集約に `reminderSentAt` を持たせる*: ドメイン無変更の方針（NFR-005）に反し、占有以外の運用フラグを集約に持ち込む。リマインド送信履歴はアプリ運用の関心事のため別ポートに分離。却下。
+  - *cron ハンドラを `aws-blocks/index.ts` に置き直接アプリ呼び出し*: `aws-blocks/` は src と相互 import しない独立ビルド単位（tsconfig.blocks）。cron の配線は他の Block 資源（Database/EmailClient）同様 `composition` に置く。却下。
+- **トレードオフ**: 冪等ログのストレージが増える（予約1件につき1行）。cron の実起動（タイマー/EventBridge）は実行エントリ（composition ルート）で `startReminderCron` を呼ぶ構成とし、Preview 段階の実デプロイ採否は別途（§9 #3）。
+
 ## 8. 要件トレーサビリティ
 
 | 要件ID | 対応する設計項目 | 備考 |
@@ -251,6 +264,7 @@ sequenceDiagram
 | FR-032 | §4 リマインド index, §5 `confirmedStartingBetween`(async) | リマインド |
 | FR-030/031/032 | ADR-AB06, `SesNotificationAdapter` | 確定/キャンセル/リマインドの Email Block 送信（#11） |
 | FR-040/042 | ADR-AB07, `AuthGateway`/`CognitoAuthGateway` | 会員登録・ログイン・ロール（Member/Admin）を Authentication Block 化（#10） |
+| FR-032 / U-03 | ADR-AB08, `CronJob`/`runReminderCycle`/`ReminderLog` | 利用24h前リマインドの自動定期実行・二重送信防止（#12） |
 | NFR-002 | ADR-AB06（`EmailRecipientResolver` で宛先を一点解決, マスク済みのみログ）／ADR-AB07（資格情報は Cognito, PII プロフィールはリポジトリ） | 通知での生 PII 非露出・資格情報の自前保持回避 |
 | NFR-003 | ADR-AB03 | インメモリ共存（学習・テスト） |
 | NFR-006 | §1/§2, ADR-AB03, #7 `backend` シーム | DI 設定のみで切替 |
@@ -272,3 +286,4 @@ sequenceDiagram
 |---|---|---|
 | 2026-06-27 | 初版（#8〜#15 の前提設計。async ポート化と占有の物理制約を確定） | desartslab-kato |
 | 2026-06-28 | ADR-AB07 追記（#10 認証の Authentication Block(Cognito) 化。資格情報=Block／プロフィール=リポジトリ、ロール=`custom:role` 属性、Customer 関連ポートの async 化） | desartslab-kato |
+| 2026-06-28 | ADR-AB08 追記（#12 リマインドの Scheduled tasks Block(cron) 化。`runReminderCycle` 抽出と `ReminderLog` 冪等ログによる二重送信防止） | desartslab-kato |
