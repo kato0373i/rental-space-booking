@@ -39,7 +39,7 @@ class FakeEmail implements EmailSender {
 }
 
 const resolverFor = (map: Record<string, string>): EmailRecipientResolver => ({
-  realEmailFor: (id) => map[id],
+  realEmailFor: async (id) => map[id],
 });
 
 describe("SesNotificationAdapter（Email Block / SES, #11）", () => {

@@ -38,7 +38,7 @@ export class SesNotificationAdapter implements NotificationPort {
   ) {}
 
   async send(message: NotificationMessage): Promise<void> {
-    const to = this.resolver.realEmailFor(message.recipientRef);
+    const to = await this.resolver.realEmailFor(message.recipientRef);
     if (to === undefined) {
       // 宛先未登録。生 PII は無いのでマスク表現でログのみ（送信はスキップ）。
       console.warn(

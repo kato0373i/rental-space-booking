@@ -25,7 +25,7 @@ beforeEach(async () => {
 
 describe("会員予約の customerId 紐づけ（ADR-F02）", () => {
   it("ログイン会員の customerId で予約すると履歴に現れる", async () => {
-    const login = app.loginMock.execute({ loginId: "taro", secret: "password" });
+    const login = await app.login.execute({ loginId: "taro", secret: "password" });
     expect(login.ok).toBe(true);
     if (!login.ok) return;
     expect(login.value.customerId).toBe(memberId);

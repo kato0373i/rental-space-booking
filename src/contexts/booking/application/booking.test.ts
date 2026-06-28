@@ -21,6 +21,12 @@ const SAT_11 = jst(2026, 6, 27, 11, 0);
 
 const GUEST: Actor = { role: "Guest" };
 
+/**
+ * 通知は結果整合の fire-and-forget で、宛先（マスク済み）解決が async になった（ADR-AB06/AB07）。
+ * 送信完了は次のマクロタスクまでに揃うため、件数アサーション前に保留タスクを排出する。
+ */
+const flushNotifications = () => new Promise((resolve) => setTimeout(resolve, 0));
+
 const guestContact = (email = "hanako@example.com") => ({
   name: "佐藤花子",
   email,
@@ -85,6 +91,7 @@ describe("FR-012 予約作成（決済成功で確定）", () => {
     if (!r.ok) return;
     expect(r.value.reservationNumber).toMatch(/^RSV-/);
     expect(r.value.priceJpy).toBe(2000);
+    await flushNotifications();
     expect(app.notifier.sentOfKind("Confirmed").length).toBe(1);
   });
 
@@ -385,6 +392,7 @@ describe("FR-032 リマインド", () => {
       referenceTime: jst(2026, 6, 23, 10, 0), // 開始の24h前
     });
     expect(reminded.sent).toBe(1);
+    await flushNotifications();
     expect(app.notifier.sentOfKind("Reminder").length).toBe(1);
   });
 

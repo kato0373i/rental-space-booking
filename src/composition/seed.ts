@@ -76,7 +76,7 @@ export async function seed(container: Container): Promise<SeedResult> {
     throw new Error(`シードのスペース登録に失敗しました: ${JSON.stringify(studio.error)}`);
   }
 
-  const member = container.registerMember.execute({
+  const member = await container.registerMember.execute({
     name: "山田太郎",
     email: "taro@example.com",
     phone: "090-0000-0000",
@@ -87,18 +87,18 @@ export async function seed(container: Container): Promise<SeedResult> {
     throw new Error(`シードの会員登録に失敗しました: ${JSON.stringify(member.error)}`);
   }
 
-  // 管理者アカウント（FR-042, B-1）。Customer として登録し、loginId を管理者集合に追加する。
-  const admin = container.registerMember.execute({
+  // 管理者アカウント（FR-042, B-1）。Admin ロールで登録する（認証基盤がロールを保持, ADR-AB07）。
+  const admin = await container.registerMember.execute({
     name: "運営管理者",
     email: "admin@example.com",
     phone: "090-9999-9999",
     loginId: "admin",
     secret: "admin123",
+    role: "Admin",
   });
   if (!admin.ok) {
     throw new Error(`シードの管理者登録に失敗しました: ${JSON.stringify(admin.error)}`);
   }
-  container.adminLoginIds.add("admin");
 
   return {
     spaceId: SpaceId.of(registered.value.spaceId),

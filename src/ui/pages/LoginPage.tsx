@@ -19,9 +19,9 @@ export function LoginPage() {
   const [regSecret, setRegSecret] = useState("");
   const [regError, setRegError] = useState<string | null>(null);
 
-  const doLogin = () => {
+  const doLogin = async () => {
     setLoginError(null);
-    const r = services.login(loginId.trim(), secret);
+    const r = await services.login(loginId.trim(), secret);
     if (r.ok) {
       setSession(r.value);
       navigate(r.value.role === "Admin" ? "/admin" : "/my");
@@ -30,9 +30,9 @@ export function LoginPage() {
     }
   };
 
-  const doRegister = () => {
+  const doRegister = async () => {
     setRegError(null);
-    const reg = services.registerMember({
+    const reg = await services.registerMember({
       name,
       email,
       phone,
@@ -44,7 +44,7 @@ export function LoginPage() {
       return;
     }
     // 登録後そのままログイン。
-    const login = services.login(regLoginId.trim(), regSecret);
+    const login = await services.login(regLoginId.trim(), regSecret);
     if (login.ok) {
       setSession(login.value);
       navigate("/my");

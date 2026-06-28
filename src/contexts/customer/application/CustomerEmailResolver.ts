@@ -10,7 +10,7 @@ import type { CustomerRepository } from "../domain/ports/CustomerRepository.js";
 export class CustomerEmailResolver implements EmailRecipientResolver {
   constructor(private readonly customers: CustomerRepository) {}
 
-  realEmailFor(customerId: CustomerId): string | undefined {
-    return this.customers.byId(customerId)?.contact.email;
+  async realEmailFor(customerId: CustomerId): Promise<string | undefined> {
+    return (await this.customers.byId(customerId))?.contact.email;
   }
 }

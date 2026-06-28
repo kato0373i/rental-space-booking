@@ -31,16 +31,16 @@ const placeForMember = async () => {
 };
 
 describe("管理者ログイン（B-1, FR-042）", () => {
-  it("管理者アカウントは Admin ロールで返る", () => {
-    const r = app.loginMock.execute({ loginId: "admin", secret: "admin123" });
+  it("管理者アカウントは Admin ロールで返る", async () => {
+    const r = await app.login.execute({ loginId: "admin", secret: "admin123" });
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.value.role).toBe("Admin");
     expect(r.value.customerId).toBe(adminId);
   });
 
-  it("一般会員は Member ロール", () => {
-    const r = app.loginMock.execute({ loginId: "taro", secret: "password" });
+  it("一般会員は Member ロール", async () => {
+    const r = await app.login.execute({ loginId: "taro", secret: "password" });
     expect(r.ok && r.value.role).toBe("Member");
   });
 });
