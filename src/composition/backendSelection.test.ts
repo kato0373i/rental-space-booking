@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { InMemoryReservationRepository } from "../contexts/booking/infrastructure/InMemoryReservationRepository.js";
 import { BlocksReservationRepository } from "../contexts/booking/infrastructure/BlocksReservationRepository.js";
@@ -6,6 +7,7 @@ import { BlocksSpaceRepository } from "../contexts/space/infrastructure/BlocksSp
 import { InMemoryEventBus } from "../shared/domain/EventBus.js";
 import { BlocksEventBus } from "../shared/infrastructure/BlocksEventBus.js";
 import { createContainer } from "./container.js";
+import { buildBlocksInfra } from "./blocksWiring.js";
 
 // backend 切替シームの契約を固定する（#7 基盤 → #8 予約 → #9 スペース → #10 認証 → #13 イベント を活性化）。
 describe("createContainer backend 選択", () => {
@@ -24,7 +26,12 @@ describe("createContainer backend 選択", () => {
   });
 
   it('backend "blocks" は予約・スペース・イベントを AWS Blocks 実装に切り替える（#8/#9/#13）', () => {
-    const c = createContainer({ backend: "blocks", silentNotifications: true });
+    // blocks 配線はブラウザバンドル隔離のため別モジュール（#6）。テストでは直接構築して注入する。
+    const blocksInfra = buildBlocksInfra({
+      scopeId: `test-${randomUUID()}`,
+      silentNotifications: true,
+    });
+    const c = createContainer({ backend: "blocks", silentNotifications: true, blocksInfra });
     expect(c.reservations).toBeInstanceOf(BlocksReservationRepository);
     expect(c.spaces).toBeInstanceOf(BlocksSpaceRepository);
     // イベントは Background jobs Block（AsyncJob）で非同期＋リトライ/DLQ（#13, ADR-AB09）。

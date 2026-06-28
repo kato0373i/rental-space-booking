@@ -150,7 +150,20 @@ const toActor = (session: SessionUser): Actor => ({
  * シードは冪等: すでにスペースが存在する（＝永続 DB が初期化済み/リロード）場合は再シードしない。
  */
 export async function createWebApp(options: ContainerOptions = {}): Promise<AppServices> {
-  const c = createContainer(options);
+  // blocks の AWS Blocks 配線（`@aws-blocks/*`=Node 専用）は動的 import で構築・注入し、
+  // ブラウザ既定（memory）のバンドルに含めない（#6 / ADR-AB11）。
+  let containerOptions = options;
+  if (options.backend === "blocks" && !options.blocksInfra) {
+    const { buildBlocksInfra } = await import("./blocksWiring.js");
+    containerOptions = {
+      ...options,
+      blocksInfra: buildBlocksInfra({
+        scopeId: options.blocksScopeId ?? "rental-space-booking",
+        silentNotifications: options.silentNotifications ?? false,
+      }),
+    };
+  }
+  const c = createContainer(containerOptions);
   // 永続バックエンドでは初回のみシードする（リロード・複数接続での重複登録を防ぐ）。
   if ((await c.listSpaces.execute(true)).length === 0) {
     await seed(c);

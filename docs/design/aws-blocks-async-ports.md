@@ -325,7 +325,7 @@ sequenceDiagram
 | 3 | AWS Blocks は Preview。本番デプロイ（sandbox/deploy）の採否は別途判断 | — | 保留 |
 | 4 | ロールを Cognito グループ（`requireRole`）へ移行（グループ加入の管理 API 公開が前提）。現状は `custom:role` 属性（ADR-AB07） | 実装(#10 後続) | 保留 |
 | 5 | 顧客プロフィール（連絡先）の Database Block 化（`BlocksCustomerRepository`）。#10 では認証 Block を優先し、プロフィールはインメモリ共存のまま（役割分担は ADR-AB07 で確定済み）。これが入るまで「予約番号＋メール照会」はリロード跨ぎで復元不可（ADR-AB11） | 実装(後続) | 保留 |
-| 6 | `npm run build:web`（本番AOT）でブラウザSPAバンドルが Node 専用 Blocks アダプタを取り込み失敗（#13 以降の既存問題）。memory 既定経路が Blocks を静的 import しない合成分離（blocks 配線の動的 import 化）が必要（ADR-AB11） | 実装(後続) | 保留 |
+| 6 | ~~`npm run build:web` がブラウザSPAバンドルに Node 専用 Blocks アダプタを取り込み失敗~~ → **解決**: blocks 配線を `blocksWiring.ts` に隔離し `createWebApp({backend:"blocks"})` から動的 import。`container.ts`（memory 既定）は `@aws-blocks/*` 非依存になり、build:web 成功（blocks はコード分割チャンク）。ADR-AB11 追補 | — | 完了 |
 
 ## 10. 変更履歴
 
