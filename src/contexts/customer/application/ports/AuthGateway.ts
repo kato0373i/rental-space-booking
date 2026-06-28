@@ -31,8 +31,8 @@ export type LoginInput = {
 export interface AuthGateway {
   /**
    * 資格情報を登録する（会員登録の sign-up）。
-   * ログインIDの重複など登録失敗は ValidationError。プロフィール保存より後に呼び、
-   * 失敗時は呼び出し側がプロフィールを確定しないことで orphan を防ぐ（ADR-AB07）。
+   * ログインIDの重複など登録失敗は ValidationError。プロフィールを組み立てた後・**保存する前**に呼び、
+   * 成功時にのみプロフィールを保存することで orphan（プロフィールだけ残る）を防ぐ（ADR-AB07）。
    */
   register(input: RegisterCredentialInput): Promise<Result<void, ValidationError>>;
 
