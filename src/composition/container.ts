@@ -123,6 +123,11 @@ export type ContainerOptions = {
    * AWS Blocks に決済 Block は無いため backend とは独立し、デプロイ時に実 Stripe SDK の実装を注入する。
    */
   readonly paymentGateway?: StripeGateway;
+  /**
+   * blocks バックエンドの AWS Blocks リソース境界名（既定 "rental-space-booking"）。
+   * テストで一意名を与えると Database/Cognito/EventBus/Email を丸ごと隔離できる（#15）。
+   */
+  readonly blocksScopeId?: string;
 };
 
 /**
@@ -134,18 +139,19 @@ export type ContainerOptions = {
  */
 export function createContainer(options: ContainerOptions = {}): Container {
   const backend: AppBackend = options.backend ?? "memory";
+  const scopeId = options.blocksScopeId ?? "rental-space-booking";
 
   const clock: Clock = options.clock ?? new SystemClock();
   // イベントバス（#13）。blocks は Background jobs Block（AsyncJob）で非同期＋リトライ/DLQ、
   // memory はプロセス内 fire-and-forget（ADR-AB09）。ポート（publish/subscribe）は共通。
   const bus: EventBus =
     backend === "blocks"
-      ? new BlocksEventBus(new Scope("rental-space-booking"))
+      ? new BlocksEventBus(new Scope(scopeId))
       : new InMemoryEventBus();
 
   // リポジトリ。予約・スペースは backend で切替（#8/#9）。顧客は順次移行（#10）。
   // blocks では 1 つの Database を予約・スペースで共有する（マイグレーションは初回クエリ時に一括適用）。
-  const blocksDb = backend === "blocks" ? createBlocksDb() : undefined;
+  const blocksDb = backend === "blocks" ? createBlocksDb(scopeId) : undefined;
   const spaces: SpaceRepository = blocksDb
     ? new BlocksSpaceRepository(blocksDb)
     : new InMemorySpaceRepository();
@@ -179,7 +185,7 @@ export function createContainer(options: ContainerOptions = {}): Container {
           new SesNotificationAdapter(
             // ローカルは Email Block のモック（外部送信なし）。実送信切替時は
             // SES で検証済みの送信元アドレスへ差し替える（#15 / デプロイ時 TODO）。
-            new EmailClient(new Scope("rental-space-booking"), "notifications", {
+            new EmailClient(new Scope(scopeId), "notifications", {
               fromAddress: "noreply@example.com",
             }),
             new CustomerEmailResolver(customers),
@@ -194,7 +200,7 @@ export function createContainer(options: ContainerOptions = {}): Container {
   // ローカルの Cognito は Block のモック（実 AWS 不要・外部 I/O なし）として動作する。
   const auth: AuthGateway =
     backend === "blocks"
-      ? new CognitoAuthGateway(new AuthCognitoClient(new Scope("rental-space-booking"), "auth"))
+      ? new CognitoAuthGateway(new AuthCognitoClient(new Scope(scopeId), "auth"))
       : new InMemoryAuthGateway(customers);
 
   return {
@@ -234,8 +240,8 @@ export function createContainer(options: ContainerOptions = {}): Container {
  * ローカルは PGlite（`.bb-data/` に永続化, AWSアカウント不要）、デプロイ時は Aurora。
  * マイグレーションは初回クエリ時に `aws-blocks/migrations` から一括適用される。
  */
-function createBlocksDb(): SqlDatabase {
+function createBlocksDb(scopeId: string): SqlDatabase {
   const migrationsPath = fileURLToPath(new URL("../../aws-blocks/migrations", import.meta.url));
-  const db = new Database(new Scope("rental-space-booking"), "main", { migrationsPath });
+  const db = new Database(new Scope(scopeId), "main", { migrationsPath });
   return db as unknown as SqlDatabase;
 }

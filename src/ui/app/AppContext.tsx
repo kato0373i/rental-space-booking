@@ -46,7 +46,13 @@ export function AppProvider({ children }: { readonly children: ReactNode }) {
 
   useEffect(() => {
     let alive = true;
-    void createWebApp().then((s) => {
+    // 既定はブラウザ内インメモリ（NFR-F03, ADR-F01）。VITE_BACKEND=blocks のとき AWS Blocks 型安全
+    // クライアント経由で実バックエンド（永続・共有）に接続する（#15, ADR-AB11）。
+    const bootstrap =
+      import.meta.env["VITE_BACKEND"] === "blocks"
+        ? import("./blocksClientLive.js").then((m) => m.createBlocksServicesFromClient())
+        : createWebApp();
+    void bootstrap.then((s) => {
       if (alive) setServices(s);
     });
     return () => {

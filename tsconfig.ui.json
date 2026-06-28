@@ -6,8 +6,12 @@
   "compilerOptions": {
     "lib": ["ES2023", "DOM", "DOM.Iterable"],
     "jsx": "react-jsx",
-    "types": ["node", "vite/client"]
+    "types": ["node", "vite/client"],
+    // AWS Blocks 型安全クライアント（#15）。"aws-blocks" をバックエンド定義へ型解決し、
+    // DB↔UI の型不整合をコンパイル時に検出する（実行時の解決は dev:blocks / デプロイが供給）。
+    "baseUrl": ".",
+    "paths": { "aws-blocks": ["aws-blocks/index.ts"] }
   },
-  "include": ["src/ui"],
+  "include": ["src/ui", "aws-blocks/index.ts"],
   "exclude": ["node_modules", "dist"]
 }
