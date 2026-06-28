@@ -270,7 +270,8 @@ sequenceDiagram
 - **コンテキスト**: 「決済成功で予約確定」がコア決定。現状は `MockPaymentAdapter` の `Succeed/Fail/Timeout` 切替デモ。**AWS Blocks に決済 Block は存在しない**（決済は Stripe 等の外部 SaaS）ため、本件は「Block への置換」ではなく**外部決済アダプタ＋Background jobs オーケストレーション**になる。
 - **決定**:
   1. **`PaymentPort` の外部プロバイダ実装 `StripePaymentAdapter` を追加**。具体 SDK に結合せず最小面 `StripeGateway`（`createCharge`/`createRefund`）越しに使い、テストは fake 注入（SES/Cognito と同方針）。同期与信は既存の `PlaceReservation` Saga から呼ばれ「決済成功で確定／失敗・タイムアウトで中断」をそのまま満たす（PlaceReservation 無変更）。冪等キー＝予約ID（FR-020）。
-  2. **非同期/取りこぼしの決着は Webhook × Background jobs で後追い**。`StripeWebhookProcessor` が署名検証→決済決着（`PaymentSettlement`）へ正規化→`AsyncJob` 投入し、ワーカーが `SettleReservationPayment`（**冪等**）で予約へ反映する。`SettleReservationPayment` は Pending のみ遷移させ、既決着（同期確定・Webhook 再送）は no-op で吸収する。timeout（確定不明）後に実成立した支払いも Webhook で Confirmed に収束できる。
+  2. **非同期/取りこぼしの決着は Webhook × Background jobs で後追い**。`StripeWebhookProcessor` が署名検証→決済決着（`PaymentSettlement`）へ正規化→`AsyncJob` 投入し、ワーカーが `SettleReservationPayment`（**冪等**）で予約へ反映する。`SettleReservationPayment` は Pending のみ遷移させ、既決着（同期確定・Webhook 再送）は no-op で吸収する。主用途は「同期与信は成功したが確定保存直後に Webhook も届く」等の重複到達の安全な吸収。
+     - **timeout の扱い（重要）**: 同期与信が timeout した場合、`PlaceReservation` は即 `abort`（Aborted）して占有を解放する（後勝ちで他者の予約を奪わない安全側）。このため後から success Webhook が届いても予約は非 Pending（Aborted）で **no-op となり Confirmed には収束しない**（解放済みスロットを勝手に再確定しない）。timeout 後にプロバイダ側で課金が実成立していた場合は**返金等の手当てを別途要する**（timeout ポリシー固有の既知トレードオフ。自動返金の堅牢化は §9 後続）。
   3. **モック決済はデモ/ローカルで温存**。`createContainer` は既定で `MockPaymentAdapter`（`setBehavior` 等の introspection を公開）。`paymentGateway` 指定時のみ Saga 経路を Stripe 実装へ差し替える（backend とは独立。決済 Block が無いため）。
   4. **NFR-002**: 予約突合は metadata の `reservationId`（非PII 論理ID）のみ。カード等の生決済情報はアダプタにも保持しない（プロバイダ側トークン）。Webhook 署名検証失敗時は生エラーを載せず固定文言を返す。
 - **検討した代替案**:
