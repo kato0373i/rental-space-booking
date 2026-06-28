@@ -324,7 +324,7 @@ sequenceDiagram
 | 2 | UI の async 化に伴うローディング/エラー表示の最小調整範囲 | 実装(#15) | #15 |
 | 3 | AWS Blocks は Preview。本番デプロイ（sandbox/deploy）の採否は別途判断 | — | 保留 |
 | 4 | ロールを Cognito グループ（`requireRole`）へ移行（グループ加入の管理 API 公開が前提）。現状は `custom:role` 属性（ADR-AB07） | 実装(#10 後続) | 保留 |
-| 5 | 顧客プロフィール（連絡先）の Database Block 化（`BlocksCustomerRepository`）。#10 では認証 Block を優先し、プロフィールはインメモリ共存のまま（役割分担は ADR-AB07 で確定済み）。これが入るまで「予約番号＋メール照会」はリロード跨ぎで復元不可（ADR-AB11） | 実装(後続) | 保留 |
+| 5 | ~~顧客プロフィール（連絡先）の Database Block 化~~ → **解決**: `BlocksCustomerRepository`（migration `004_create_customers.sql`）でプロフィール（PII）を永続化。資格情報は引き続き Cognito が所有（secret は DB に保存しない, ADR-AB07）。復元時は credential=null（外部所有）・type 保持。「予約番号＋メール照会」がリロード跨ぎで復元可能に | — | 完了 |
 | 6 | ~~`npm run build:web` がブラウザSPAバンドルに Node 専用 Blocks アダプタを取り込み失敗~~ → **解決**: blocks 配線を `blocksWiring.ts` に隔離し `createWebApp({backend:"blocks"})` から動的 import。`container.ts`（memory 既定）は `@aws-blocks/*` 非依存になり、build:web 成功（blocks はコード分割チャンク）。ADR-AB11 追補 | — | 完了 |
 
 ## 10. 変更履歴
@@ -337,3 +337,5 @@ sequenceDiagram
 | 2026-06-28 | ADR-AB09 追記（#13 ドメインイベント配信の Background jobs Block(AsyncJob) 化。非同期ワーカー＋リトライ/DLQ、`EventHandler` の Promise 化、`NotificationHandlers` の失敗伝播化） | desartslab-kato |
 | 2026-06-28 | ADR-AB10 追記（#14 決済フロー本番化。外部プロバイダ(Stripe)アダプタ＋Webhook×Background jobs 決着、`SettleReservationPayment` の冪等反映。決済 Block は無し・モックは温存） | desartslab-kato |
 | 2026-06-28 | ADR-AB11 追記（#15 フロントエンドの AWS Blocks 型安全クライアント接続。`aws-blocks/index.ts` を合成ルートへ昇格し app/admin RPC を公開、`createBlocksAppServices` で UI 無変更接続、予約データ永続化。build:web の既存課題を §9 #6 に記録） | desartslab-kato |
+| 2026-06-29 | §9#6 解決（build:web のブラウザ/サーバ合成分離: `blocksWiring.ts` 動的 import 化で `@aws-blocks/*` をブラウザバンドルから隔離） | desartslab-kato |
+| 2026-06-29 | §9#5 解決（顧客プロフィールの Database Block 化: `BlocksCustomerRepository` + `Customer.snapshot/fromSnapshot`。資格情報は Cognito 所有のまま, ADR-AB07） | desartslab-kato |

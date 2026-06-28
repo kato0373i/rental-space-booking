@@ -8,7 +8,7 @@ import {
 } from "../contexts/booking/infrastructure/BlocksReservationRepository.js";
 import { BlocksReminderLog } from "../contexts/booking/infrastructure/BlocksReminderLog.js";
 import { BlocksSpaceRepository } from "../contexts/space/infrastructure/BlocksSpaceRepository.js";
-import { InMemoryCustomerRepository } from "../contexts/customer/infrastructure/InMemoryCustomerRepository.js";
+import { BlocksCustomerRepository } from "../contexts/customer/infrastructure/BlocksCustomerRepository.js";
 import { CognitoAuthGateway } from "../contexts/customer/infrastructure/CognitoAuthGateway.js";
 import { AuthCognitoClient } from "../contexts/customer/infrastructure/AuthCognitoClient.js";
 import { CustomerEmailResolver } from "../contexts/customer/application/CustomerEmailResolver.js";
@@ -47,7 +47,8 @@ export function buildBlocksInfra(args: {
   const scope = new Scope(args.scopeId);
   const db = createBlocksDb(args.scopeId);
 
-  const customers = new InMemoryCustomerRepository();
+  // 顧客プロフィール（連絡先 PII）も Database へ永続化する（§9#5）。資格情報は Cognito（ADR-AB07）。
+  const customers = new BlocksCustomerRepository(db);
   const notifier = new MockNotificationAdapter(!args.silentNotifications);
 
   // blocks では SES（Email Block）へ送信しつつ、デモ用の送信ログ（Mock）も Tee で温存する（#11）。

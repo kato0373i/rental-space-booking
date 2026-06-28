@@ -38,6 +38,7 @@ import { CustomerDirectoryService } from "../contexts/customer/application/Custo
 import { Login } from "../contexts/customer/application/Login.js";
 import { RegisterMember } from "../contexts/customer/application/RegisterMember.js";
 import type { AuthGateway } from "../contexts/customer/application/ports/AuthGateway.js";
+import type { CustomerRepository } from "../contexts/customer/domain/ports/CustomerRepository.js";
 import { InMemoryCustomerRepository } from "../contexts/customer/infrastructure/InMemoryCustomerRepository.js";
 import { InMemoryAuthGateway } from "../contexts/customer/infrastructure/InMemoryAuthGateway.js";
 
@@ -61,7 +62,8 @@ export type BackendInfra = {
   readonly spaces: SpaceRepository;
   readonly reservations: ReservationRepository;
   readonly reminderLog: ReminderLog;
-  readonly customers: InMemoryCustomerRepository;
+  /** 顧客プロフィール（backend に応じてインメモリ or AWS Blocks Database 実装, §9#5）。 */
+  readonly customers: CustomerRepository;
   readonly auth: AuthGateway;
   /** デモ/テスト用 introspection（sent/clear）を保持するモック通知。常に公開する。 */
   readonly notifier: MockNotificationAdapter;
@@ -78,7 +80,8 @@ export type Container = {
   readonly directory: CustomerDirectoryPort;
   /** スペースリポジトリ（backend に応じてインメモリ or AWS Blocks 実装。ADR-AB03）。 */
   readonly spaces: SpaceRepository;
-  readonly customers: InMemoryCustomerRepository;
+  /** 顧客プロフィールリポジトリ（backend に応じてインメモリ or AWS Blocks 実装, §9#5）。 */
+  readonly customers: CustomerRepository;
   /** 予約リポジトリ（backend に応じてインメモリ or AWS Blocks 実装。ADR-AB03）。 */
   readonly reservations: ReservationRepository;
   // Booking ユースケース
